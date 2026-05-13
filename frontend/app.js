@@ -20,14 +20,18 @@ function switchTab(tab) {
         tempSection.classList.add('hidden');
         tabCurrency.classList.add('active');
         tabCurrency.classList.remove('temp-active');
+        tabCurrency.setAttribute('aria-selected', 'true');
         tabTemp.classList.remove('active');
         tabTemp.classList.remove('temp-active');
+        tabTemp.setAttribute('aria-selected', 'false');
         loadCurrencyHistory();
     } else {
         currencySection.classList.add('hidden');
         tempSection.classList.remove('hidden');
         tabTemp.classList.add('active', 'temp-active');
         tabCurrency.classList.remove('active');
+        tabTemp.setAttribute('aria-selected', 'true');
+        tabCurrency.setAttribute('aria-selected', 'false');
         loadTempHistory();
     }
 }
@@ -78,7 +82,7 @@ async function convertCurrency() {
 
     } catch (err) {
         console.error('Currency conversion error:', err);
-        showToast(`Error: ${err.message}. Is the server running on port 8082?`, 'error');
+        showToast(`Could not reach currency API: ${err.message}`, 'error');
     } finally {
         btn.classList.remove('loading');
         btn.innerHTML = `
@@ -115,7 +119,7 @@ async function loadCurrencyHistory() {
 
     } catch (err) {
         console.error('Load currency history error:', err);
-        tbody.innerHTML = '<tr class="empty-row"><td colspan="5" style="color: var(--accent-rose)">⚠ Could not load history. Is server running?</td></tr>';
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="5" class="history-error">Could not load history. Check your connection.</td></tr>';
     }
 }
 
@@ -170,7 +174,7 @@ async function convertTemperature() {
 
     } catch (err) {
         console.error('Temperature conversion error:', err);
-        showToast(`Error: ${err.message}. Is the server running on port 8081?`, 'error');
+        showToast(`Could not reach temperature API: ${err.message}`, 'error');
     } finally {
         btn.classList.remove('loading');
         btn.innerHTML = `
@@ -208,7 +212,7 @@ async function loadTempHistory() {
 
     } catch (err) {
         console.error('Load temp history error:', err);
-        tbody.innerHTML = '<tr class="empty-row"><td colspan="5" style="color: var(--accent-rose)">⚠ Could not load history. Is server running?</td></tr>';
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="5" class="history-error">Could not load history. Check your connection.</td></tr>';
     }
 }
 
