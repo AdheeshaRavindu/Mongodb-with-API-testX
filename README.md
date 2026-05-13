@@ -9,9 +9,9 @@
 ![CSS3](https://img.shields.io/badge/CSS3-1572B6?style=for-the-badge&logo=css3&logoColor=white)
 ![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=for-the-badge&logo=javascript&logoColor=black)
 
-**A full-stack microservices application featuring Temperature and Currency conversion with a modern glassmorphism UI, built with Spring Boot and MongoDB.**
+**A full-stack microservices application featuring Temperature and Currency conversion with a calm, organic UI theme, built with Spring Boot and MongoDB.**
 
-[Features](#-features) • [Architecture](#-architecture) • [Getting Started](#-getting-started) • [API Reference](#-api-reference) • [Screenshots](#-screenshots)
+[Features](#-features) • [Live Frontend](#-live-frontend) • [UI Theme](#-ui-theme) • [Architecture](#-architecture) • [Getting Started](#-getting-started) • [API Reference](#-api-reference)
 
 </div>
 
@@ -22,9 +22,37 @@
 - 🌡️ **Temperature Conversion** — Convert between Celsius, Fahrenheit, and Kelvin with smart unit normalization
 - 💱 **Currency Conversion** — Convert USD to LKR with a configurable exchange rate
 - 📊 **Conversion History** — All conversions are logged and persisted in MongoDB with timestamps
-- 🎨 **Modern UI** — Premium glassmorphism design with animated gradient backgrounds and micro-interactions
+- 🎨 **Modern UI** — Minimal, organic dashboard with linen-style background and warm neutral tones
 - 🏗️ **Microservices Architecture** — Each converter runs as an independent Spring Boot service
 - 🔄 **RESTful APIs** — Clean REST endpoints with proper error handling and CORS support
+
+---
+
+## 🌐 Live Frontend
+
+- Production URL: **https://converthub-mongodb-api.pages.dev**
+- Hosting: **Cloudflare Pages**
+- Frontend folder deployed: `frontend/`
+
+---
+
+## 🎨 UI Theme
+
+The frontend now follows an earthy, professional palette with clear semantic contrast:
+
+- **Background (linen beige):** `#EDE6DB`
+- **Headline primary:** `#1F4D3C`
+- **Body text / muted copy:** `#3C3C3D` / `#6C6C6C`
+- **Header + footer surface:** `#4D4940`
+- **Currency action:** `#0D6C68`
+- **Temperature action (neutral):** `#8C8983`
+- **Accent dots:** `#C36B42`, `#C09B61`, `#1F4D3C`
+- **Footer API chip:** `#1D5D51`
+
+Design goals:
+- clear visual hierarchy
+- reduced visual noise
+- warm, organic feel with professional contrast
 
 ---
 
@@ -61,7 +89,7 @@
 ## 📁 Project Structure
 
 ```
-Temperature_-_Currency_Converter/
+Mongodb-with-API-testX/
 │
 ├── tempconv/                          # 🌡️ Temperature Converter Microservice
 │   ├── pom.xml                        # Maven dependencies (Spring Boot 4.0.5)
@@ -105,7 +133,7 @@ Temperature_-_Currency_Converter/
 │
 └── frontend/                          # 🎨 Web Frontend
     ├── index.html                     # Main HTML structure
-    ├── style.css                      # Glassmorphism CSS styling
+    ├── style.css                      # Organic UI theme + responsive styling
     └── app.js                         # API integration & DOM logic
 ```
 
@@ -264,22 +292,6 @@ curl http://localhost:8082/api/currency/history
 
 ---
 
-## 🖼 Screenshots
-
-### 🎨 Frontend UI
-
-The unified web interface features:
-
-- **Tab-based navigation** between Currency and Temperature converters
-- **Animated gradient background** with floating orbs
-- **Glassmorphism cards** with frosted glass effect
-- **Real-time conversion results** with smooth animations
-- **Conversion history tables** with zebra striping and hover effects
-- **Toast notifications** for success/error feedback
-- **Fully responsive** design for mobile and desktop
-
----
-
 ## 🛠 Tech Stack
 
 | Layer        | Technology                  | Purpose                              |
@@ -289,7 +301,7 @@ The unified web interface features:
 | **ORM**      | Spring Data MongoDB         | Repository pattern data access       |
 | **Utility**  | Lombok                      | Boilerplate code reduction           |
 | **Frontend** | HTML5 / CSS3 / JavaScript   | Responsive web interface             |
-| **Fonts**    | Google Fonts (Inter)        | Modern typography                    |
+| **Fonts**    | Google Fonts (Outfit, IBM Plex Mono) | Modern typography            |
 | **Build**    | Maven                       | Dependency management & build tool   |
 
 ---
