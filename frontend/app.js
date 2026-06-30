@@ -3,8 +3,13 @@
    =================================================== */
 
 // API Endpoints
-const CURRENCY_API = 'https://currency-converter.vikumkodikara123.workers.dev/api/currency';
-const TEMP_API = 'https://temperature-converter.vikumkodikara123.workers.dev/api/temperatures';
+const isLocalRuntime = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+const CURRENCY_API = isLocalRuntime
+    ? 'http://localhost:8082/api/currency'
+    : 'https://currency-converter.vikumkodikara123.workers.dev/api/currency';
+const TEMP_API = isLocalRuntime
+    ? 'http://localhost:8081/api/temperatures'
+    : 'https://temperature-converter.vikumkodikara123.workers.dev/api/temperatures';
 
 // ==========================================
 //  TAB SWITCHING

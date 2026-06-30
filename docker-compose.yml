@@ -1,0 +1,71 @@
+services:
+  mongo-temp:
+    image: mongo:7.0
+    container_name: mongo-temp
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-temp-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  mongo-currency:
+    image: mongo:7.0
+    container_name: mongo-currency
+    restart: unless-stopped
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongo-currency-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  tempconv:
+    build:
+      context: ./tempconv
+    container_name: tempconv
+    restart: unless-stopped
+    environment:
+      MONGODB_URI: mongodb://mongo-temp:27017/temp_db
+      SERVER_PORT: 8081
+    ports:
+      - "8081:8081"
+    depends_on:
+      mongo-temp:
+        condition: service_healthy
+
+  currencyconvertor:
+    build:
+      context: ./currencyconvertor
+    container_name: currencyconvertor
+    restart: unless-stopped
+    environment:
+      MONGODB_URI: mongodb://mongo-currency:27017/currency_db
+      SERVER_PORT: 8082
+    ports:
+      - "8082:8082"
+    depends_on:
+      mongo-currency:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: converthub-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    depends_on:
+      - tempconv
+      - currencyconvertor
+
+volumes:
+  mongo-temp-data:
+  mongo-currency-data:

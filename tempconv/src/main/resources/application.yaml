@@ -2,9 +2,8 @@ spring:
   application:
     name: tempconv
 
-  data:
-    mongodb:
-      uri: mongodb://localhost:27017/temp_db
+  mongodb:
+    uri: ${MONGODB_URI:mongodb://localhost:27017/temp_db}
 
 server:
-  port: 8081
+  port: ${SERVER_PORT:8081}
