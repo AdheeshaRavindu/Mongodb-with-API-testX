@@ -2,13 +2,13 @@ package com.nima.tempconv.controller;
 
 import java.util.List;
 
-import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.nima.tempconv.model.TemperatureLog;
@@ -26,8 +26,17 @@ public class TemperatureController {
     }
 
     @PostMapping("/convert")
-    public TemperatureLog convert(@RequestParam double value, @RequestParam String unit) {
+    public TemperatureLog convert(
+            @RequestHeader(value = "X-API-KEY", required = false) String apiKey,
+            @RequestParam double value,
+            @RequestParam String unit) {
+        temperatureService.validateApiKey(apiKey);
         return temperatureService.convertAndSave(value, unit);
+    }
+
+    @GetMapping(value = "/safety-check", produces = MediaType.TEXT_PLAIN_VALUE)
+    public String safetyCheck(@RequestParam double value, @RequestParam String unit) {
+        return temperatureService.checkSafety(value, unit);
     }
 
     @GetMapping("/history")
@@ -35,9 +44,8 @@ public class TemperatureController {
         return temperatureService.getHistory();
     }
 
-    @ResponseStatus(HttpStatus.BAD_REQUEST)
-    @org.springframework.web.bind.annotation.ExceptionHandler(IllegalArgumentException.class)
-    public String handleInvalidUnit(IllegalArgumentException ex) {
-        return ex.getMessage();
+    @GetMapping("/history/filter")
+    public List<TemperatureLog> historyFilter(@RequestParam String unit) {
+        return temperatureService.getHistoryByUnit(unit);
     }
 }

@@ -7,6 +7,7 @@ services:
       - "27017:27017"
     volumes:
       - mongo-temp-data:/data/db
+      - ./docs/mongo-seed-api-keys.js:/docker-entrypoint-initdb.d/01-api-keys.js:ro
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
       interval: 10s
@@ -27,6 +28,17 @@ services:
       timeout: 5s
       retries: 10
 
+  mongo-seed:
+    image: mongo:7.0
+    container_name: mongo-seed
+    depends_on:
+      mongo-temp:
+        condition: service_healthy
+    volumes:
+      - ./docs/mongo-seed-api-keys.js:/seed.js:ro
+    entrypoint: ["mongosh", "mongodb://mongo-temp:27017/temp_db", "--file", "/seed.js"]
+    restart: "no"
+
   tempconv:
     build:
       context: ./tempconv
@@ -40,6 +52,8 @@ services:
     depends_on:
       mongo-temp:
         condition: service_healthy
+      mongo-seed:
+        condition: service_completed_successfully
 
   currencyconvertor:
     build:

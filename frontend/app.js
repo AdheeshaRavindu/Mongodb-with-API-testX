@@ -10,6 +10,7 @@ const CURRENCY_API = isLocalRuntime
 const TEMP_API = isLocalRuntime
     ? 'http://localhost:8081/api/temperatures'
     : 'https://temperature-converter.vikumkodikara123.workers.dev/api/temperatures';
+const TEMP_API_KEY = 'SUPER-SECRET-DEV-KEY-123';
 
 // ==========================================
 //  TAB SWITCHING
@@ -151,7 +152,10 @@ async function convertTemperature() {
 
     try {
         const res = await fetch(`${TEMP_API}/convert?value=${value}&unit=${unit}`, {
-            method: 'POST'
+            method: 'POST',
+            headers: {
+                'X-API-KEY': TEMP_API_KEY
+            }
         });
 
         if (!res.ok) {
