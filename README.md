@@ -30,7 +30,7 @@ Frontend (3000) ──┬── Temperature API (8081) ── MongoDB temp_db (2
 | Temperature API | 8081 | REST only — not the UI |
 | Currency API | 8082 | REST only — not the UI |
 | MongoDB (temp) | 27017 | `temp_db` + `api_keys` |
-| MongoDB (currency) | 27018 | `currency_db` |
+| MongoDB (currency) | 27018 | `currency_db` + `api_keys` |
 
 ## Quick start (Docker)
 
@@ -78,7 +78,7 @@ Mongodb-with-API-testX/
 
 | Method | Endpoint | Auth |
 |--------|----------|------|
-| POST | `/api/currency/convert?usdAmount=` | None |
+| POST | `/api/currency/convert?usdAmount=` | `X-API-KEY` header |
 | GET | `/api/currency/history` | None |
 
 ### Lab 04 — Safety check & filtered history
@@ -97,15 +97,17 @@ curl "http://localhost:8081/api/temperatures/history/filter?unit=celsius"
 ### Lab 05 — API key on convert
 
 ```bash
-# Missing key → 401
+# Temperature — missing key → 401
 curl -X POST "http://localhost:8081/api/temperatures/convert?value=25&unit=celsius"
 
-# Invalid/inactive key → 401
-curl -X POST "http://localhost:8081/api/temperatures/convert?value=25&unit=celsius" \
-  -H "X-API-KEY: EXPIRED-HACKER-KEY-999"
+# Currency — missing key → 401
+curl -X POST "http://localhost:8082/api/currency/convert?usdAmount=100"
 
-# Valid key → 200
+# Valid key → 200 (both services)
 curl -X POST "http://localhost:8081/api/temperatures/convert?value=25&unit=celsius" \
+  -H "X-API-KEY: SUPER-SECRET-DEV-KEY-123"
+
+curl -X POST "http://localhost:8082/api/currency/convert?usdAmount=100" \
   -H "X-API-KEY: SUPER-SECRET-DEV-KEY-123"
 ```
 

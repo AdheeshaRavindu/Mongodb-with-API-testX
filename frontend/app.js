@@ -10,7 +10,7 @@ const CURRENCY_API = isLocalRuntime
 const TEMP_API = isLocalRuntime
     ? 'http://localhost:8081/api/temperatures'
     : 'https://temperature-converter.vikumkodikara123.workers.dev/api/temperatures';
-const TEMP_API_KEY = 'SUPER-SECRET-DEV-KEY-123';
+const API_KEY = 'SUPER-SECRET-DEV-KEY-123';
 
 // ==========================================
 //  TAB SWITCHING
@@ -64,12 +64,15 @@ async function convertCurrency() {
 
     try {
         const res = await fetch(`${CURRENCY_API}/convert?usdAmount=${amount}`, {
-            method: 'POST'
+            method: 'POST',
+            headers: {
+                'X-API-KEY': API_KEY
+            }
         });
 
         if (!res.ok) {
-            const errData = await res.json().catch(() => ({}));
-            throw new Error(errData.message || `HTTP ${res.status}`);
+            const errText = await res.text();
+            throw new Error(errText || `HTTP ${res.status}`);
         }
 
         const data = await res.json();
@@ -154,7 +157,7 @@ async function convertTemperature() {
         const res = await fetch(`${TEMP_API}/convert?value=${value}&unit=${unit}`, {
             method: 'POST',
             headers: {
-                'X-API-KEY': TEMP_API_KEY
+                'X-API-KEY': API_KEY
             }
         });
 
