@@ -4,6 +4,8 @@ Spring Boot microservices + MongoDB for USD/LKR currency and temperature convers
 
 **Live demo:** [https://api.adheesha.dev](https://api.adheesha.dev)
 
+**Full usage guide:** [docs/USAGE-GUIDE.md](docs/USAGE-GUIDE.md)
+
 ![ConvertHub demo](docs/demo.png)
 
 ## Features
