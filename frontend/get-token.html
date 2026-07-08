@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ConvertHub — Get Google ID Token</title>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 720px;
+      margin: 40px auto;
+      padding: 0 16px;
+      background: #1a1916;
+      color: #f2efe8;
+    }
+    h1 { font-size: 1.4rem; }
+    p { color: #c4beb3; line-height: 1.5; }
+    textarea {
+      width: 100%;
+      min-height: 160px;
+      margin-top: 12px;
+      padding: 12px;
+      border-radius: 8px;
+      border: 1px solid #4a463e;
+      background: #2a2722;
+      color: #f2efe8;
+      font-family: ui-monospace, monospace;
+      font-size: 12px;
+    }
+    button {
+      margin-top: 10px;
+      padding: 10px 16px;
+      border: 0;
+      border-radius: 8px;
+      background: #e8e0d4;
+      color: #1a1916;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .hint { font-size: 0.9rem; margin-top: 20px; }
+    code { background: #2a2722; padding: 2px 6px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Get Google ID Token</h1>
+  <p>
+    Sign in with Google below. Your ID token will appear in the box.
+    Copy it and use it as <code>Authorization: Bearer &lt;token&gt;</code>.
+  </p>
+
+  <div id="g_id_onload"
+       data-client_id="860796838827-g7bn0tq1cc50sndut1rukdl19t4tgm6h.apps.googleusercontent.com"
+       data-callback="handleCredential"
+       data-auto_prompt="false">
+  </div>
+  <div class="g_id_signin" data-type="standard" data-theme="outline" data-size="large"></div>
+
+  <label for="token"><strong>Your Google ID token</strong></label>
+  <textarea id="token" readonly placeholder="Sign in to see the token here..."></textarea>
+  <button type="button" onclick="copyToken()">Copy token</button>
+
+  <div class="hint">
+    <p><strong>Postman / curl header:</strong></p>
+    <p><code>Authorization: Bearer </code> + paste the token (no extra spaces)</p>
+    <p>Or paste into the auth bar on <a href="/" style="color:#9fd3ff">http://localhost:3000</a> and click Save.</p>
+  </div>
+
+  <script>
+    function handleCredential(response) {
+      document.getElementById('token').value = response.credential;
+    }
+
+    function copyToken() {
+      const el = document.getElementById('token');
+      if (!el.value) {
+        alert('Sign in first to get a token.');
+        return;
+      }
+      navigator.clipboard.writeText(el.value).then(() => alert('Token copied!'));
+    }
+  </script>
+</body>
+</html>

@@ -5,12 +5,9 @@ import java.util.List;
 import java.util.Locale;
 
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
-import com.nima.tempconv.exception.UnauthorizedApiKeyException;
-import com.nima.tempconv.model.ApiKey;
+import com.nima.tempconv.messaging.ConversionEventProducer;
 import com.nima.tempconv.model.TemperatureLog;
-import com.nima.tempconv.repository.ApiKeyRepository;
 import com.nima.tempconv.repository.TemperatureRepository;
 
 @Service
@@ -20,24 +17,13 @@ public class TemperatureService {
     private static final double FREEZING_CELSIUS = 0.0;
 
     private final TemperatureRepository temperatureRepository;
-    private final ApiKeyRepository apiKeyRepository;
+    private final ConversionEventProducer conversionEventProducer;
 
-    public TemperatureService(TemperatureRepository temperatureRepository, ApiKeyRepository apiKeyRepository) {
+    public TemperatureService(
+            TemperatureRepository temperatureRepository,
+            ConversionEventProducer conversionEventProducer) {
         this.temperatureRepository = temperatureRepository;
-        this.apiKeyRepository = apiKeyRepository;
-    }
-
-    public void validateApiKey(String apiKey) {
-        if (!StringUtils.hasText(apiKey)) {
-            throw new UnauthorizedApiKeyException("Missing required header X-API-KEY");
-        }
-
-        ApiKey storedKey = apiKeyRepository.findByKeyValue(apiKey.trim())
-                .orElseThrow(() -> new UnauthorizedApiKeyException("Invalid or inactive API key"));
-
-        if (!storedKey.isActive()) {
-            throw new UnauthorizedApiKeyException("Invalid or inactive API key");
-        }
+        this.conversionEventProducer = conversionEventProducer;
     }
 
     public TemperatureLog convertAndSave(double value, String unit) {
@@ -70,7 +56,9 @@ public class TemperatureService {
                 outputUnit,
                 Instant.now().toString());
 
-        return temperatureRepository.save(log);
+        TemperatureLog saved = temperatureRepository.save(log);
+        conversionEventProducer.publishTemperatureConversion(saved);
+        return saved;
     }
 
     public String getSafetyWarning(double value, String unit) {

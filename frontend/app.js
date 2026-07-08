@@ -10,7 +10,54 @@ const CURRENCY_API = isLocalRuntime
 const TEMP_API = isLocalRuntime
     ? 'http://localhost:8081/api/temperatures'
     : 'https://temperature-converter.vikumkodikara123.workers.dev/api/temperatures';
-const API_KEY = 'SUPER-SECRET-DEV-KEY-123';
+
+const TOKEN_STORAGE_KEY = 'converthub_google_id_token';
+
+function getGoogleIdToken() {
+    const input = document.getElementById('google-id-token');
+    if (input && input.value.trim()) {
+        return input.value.trim();
+    }
+    return localStorage.getItem(TOKEN_STORAGE_KEY) || '';
+}
+
+function saveGoogleIdToken() {
+    const input = document.getElementById('google-id-token');
+    const token = input ? input.value.trim() : '';
+    if (token) {
+        localStorage.setItem(TOKEN_STORAGE_KEY, token);
+        updateAuthStatus(true);
+        showToast('Google ID token saved', 'success');
+    } else {
+        localStorage.removeItem(TOKEN_STORAGE_KEY);
+        updateAuthStatus(false);
+        showToast('Token cleared', 'error');
+    }
+}
+
+function updateAuthStatus(hasToken) {
+    const status = document.getElementById('auth-token-status');
+    if (!status) return;
+    status.textContent = hasToken
+        ? 'Token set — Authorization: Bearer will be sent'
+        : 'Not set — API calls will return 401';
+}
+
+function authHeaders() {
+    const token = getGoogleIdToken();
+    if (!token) {
+        return {};
+    }
+    return { Authorization: `Bearer ${token}` };
+}
+
+function requireTokenOrToast() {
+    if (!getGoogleIdToken()) {
+        showToast('Paste a Google ID token in the auth bar first', 'error');
+        return false;
+    }
+    return true;
+}
 
 // ==========================================
 //  TAB SWITCHING
@@ -56,6 +103,8 @@ async function convertCurrency() {
         return;
     }
 
+    if (!requireTokenOrToast()) return;
+
     btn.classList.add('loading');
     btn.innerHTML = `
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="spin"><circle cx="12" cy="12" r="10" stroke-dasharray="30 60"/></svg>
@@ -65,9 +114,7 @@ async function convertCurrency() {
     try {
         const res = await fetch(`${CURRENCY_API}/convert?usdAmount=${amount}`, {
             method: 'POST',
-            headers: {
-                'X-API-KEY': API_KEY
-            }
+            headers: authHeaders()
         });
 
         if (!res.ok) {
@@ -77,7 +124,6 @@ async function convertCurrency() {
 
         const data = await res.json();
 
-        // Show result
         const resultPanel = document.getElementById('currency-result');
         resultPanel.classList.remove('hidden');
 
@@ -105,7 +151,7 @@ async function loadCurrencyHistory() {
     const tbody = document.getElementById('currency-history-body');
 
     try {
-        const res = await fetch(`${CURRENCY_API}/history`);
+        const res = await fetch(`${CURRENCY_API}/history`, { headers: authHeaders() });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
 
@@ -114,7 +160,6 @@ async function loadCurrencyHistory() {
             return;
         }
 
-        // Show latest first
         const sorted = [...data].reverse();
         tbody.innerHTML = sorted.map((item, i) => `
             <tr style="animation: fadeInUp 0.3s ease-out ${i * 0.05}s both">
@@ -128,7 +173,7 @@ async function loadCurrencyHistory() {
 
     } catch (err) {
         console.error('Load currency history error:', err);
-        tbody.innerHTML = '<tr class="empty-row"><td colspan="5" class="history-error">Could not load history. Check your connection.</td></tr>';
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="5" class="history-error">Could not load history. Check token and connection.</td></tr>';
     }
 }
 
@@ -147,6 +192,8 @@ async function convertTemperature() {
         return;
     }
 
+    if (!requireTokenOrToast()) return;
+
     btn.classList.add('loading');
     btn.innerHTML = `
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="spin"><circle cx="12" cy="12" r="10" stroke-dasharray="30 60"/></svg>
@@ -156,9 +203,7 @@ async function convertTemperature() {
     try {
         const res = await fetch(`${TEMP_API}/convert?value=${value}&unit=${unit}`, {
             method: 'POST',
-            headers: {
-                'X-API-KEY': API_KEY
-            }
+            headers: authHeaders()
         });
 
         if (!res.ok) {
@@ -168,7 +213,6 @@ async function convertTemperature() {
 
         const data = await res.json();
 
-        // Show result
         const resultPanel = document.getElementById('temp-result');
         resultPanel.classList.remove('hidden');
 
@@ -200,7 +244,8 @@ async function convertTemperature() {
 async function fetchAndShowSafetyWarning(value, unit) {
     try {
         const res = await fetch(
-            `${TEMP_API}/safety-check?value=${encodeURIComponent(value)}&unit=${encodeURIComponent(unit)}`
+            `${TEMP_API}/safety-check?value=${encodeURIComponent(value)}&unit=${encodeURIComponent(unit)}`,
+            { headers: authHeaders() }
         );
         if (!res.ok) {
             const errText = await res.text().catch(() => '');
@@ -268,14 +313,14 @@ async function loadTempHistory() {
         : `${TEMP_API}/history/filter?unit=${encodeURIComponent(filter)}`;
 
     try {
-        const res = await fetch(url);
+        const res = await fetch(url, { headers: authHeaders() });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         renderTempHistoryRows(data);
 
     } catch (err) {
         console.error('Load temp history error:', err);
-        tbody.innerHTML = '<tr class="empty-row"><td colspan="5" class="history-error">Could not load history. Check your connection.</td></tr>';
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="5" class="history-error">Could not load history. Check token and connection.</td></tr>';
     }
 }
 
@@ -314,9 +359,8 @@ function showToast(message, type = 'success') {
     toast.className = `toast ${type}`;
     msg.textContent = message;
 
-    // Reset animation
     toast.style.animation = 'none';
-    toast.offsetHeight; // trigger reflow
+    toast.offsetHeight;
     toast.style.animation = '';
 
     setTimeout(() => {
@@ -365,5 +409,11 @@ document.head.appendChild(spinStyle);
 //  INIT
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
+    const input = document.getElementById('google-id-token');
+    const saved = localStorage.getItem(TOKEN_STORAGE_KEY) || '';
+    if (input && saved) {
+        input.value = saved;
+    }
+    updateAuthStatus(Boolean(saved));
     loadCurrencyHistory();
 });

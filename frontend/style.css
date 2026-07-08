@@ -191,6 +191,58 @@ body {
     box-shadow: var(--shadow-md);
 }
 
+.auth-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    max-width: 1120px;
+    margin: 12px auto 0;
+    padding: 10px clamp(16px, 4vw, 28px);
+    border-radius: var(--radius-md);
+    background: rgba(77, 73, 64, 0.65);
+    border: 1px solid var(--border-subtle);
+}
+
+.auth-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #f5f5f5;
+    white-space: nowrap;
+}
+
+.auth-token-input {
+    flex: 1;
+    min-width: 200px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    background: rgba(0, 0, 0, 0.25);
+    color: #fff;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 0.8rem;
+}
+
+.auth-save-btn {
+    padding: 8px 14px;
+    border-radius: 8px;
+    border: none;
+    background: #e8e0d4;
+    color: #2c2a26;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.auth-save-btn:hover {
+    filter: brightness(1.05);
+}
+
+.auth-hint {
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.65);
+}
+
 .nav-brand {
     display: flex;
     align-items: center;

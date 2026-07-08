@@ -6,7 +6,6 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -27,10 +26,8 @@ public class TemperatureController {
 
     @PostMapping("/convert")
     public TemperatureLog convert(
-            @RequestHeader(value = "X-API-KEY", required = false) String apiKey,
             @RequestParam double value,
             @RequestParam String unit) {
-        temperatureService.validateApiKey(apiKey);
         return temperatureService.convertAndSave(value, unit);
     }
 
