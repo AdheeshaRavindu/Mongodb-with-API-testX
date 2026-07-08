@@ -194,14 +194,17 @@ body {
 .auth-bar {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 12px;
     flex-wrap: wrap;
+    width: min(1120px, calc(100% - clamp(24px, 6vw, 56px)));
     max-width: 1120px;
     margin: 12px auto 0;
     padding: 10px clamp(16px, 4vw, 28px);
     border-radius: var(--radius-md);
     background: rgba(77, 73, 64, 0.65);
     border: 1px solid var(--border-subtle);
+    box-sizing: border-box;
 }
 
 .auth-label {
@@ -212,8 +215,9 @@ body {
 }
 
 .auth-token-input {
-    flex: 1;
+    flex: 1 1 280px;
     min-width: 200px;
+    max-width: 520px;
     padding: 8px 12px;
     border-radius: 8px;
     border: 1px solid rgba(255, 255, 255, 0.15);

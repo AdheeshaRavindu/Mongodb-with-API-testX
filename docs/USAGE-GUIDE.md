@@ -119,7 +119,10 @@ Then open **http://localhost:3000**.
 ### Open the app
 
 1. Go to **http://localhost:3000**
-2. Paste a **Google ID token** into the auth bar and click **Save**
+2. In the centered **Google ID Token** bar (under the navbar):
+   - Paste your Bearer token (from [http://localhost:3000/get-token.html](http://localhost:3000/get-token.html))
+   - Click **Save**
+   - Status should change from `Not set — API calls will return 401` to `Token set — Authorization: Bearer will be sent`
 3. You should see the ConvertHub hero, navbar, and converter cards
 
 ### Currency converter
@@ -382,6 +385,21 @@ curl.exe -X POST "http://localhost:8082/api/currency/convert?usdAmount=100" `
 
 When calls start returning **401**, the token expired — repeat the steps on `/get-token.html`.
 
+### What RabbitMQ does in this project
+
+RabbitMQ is used as an **event bus after a successful convert**. It does **not** perform the conversion itself.
+
+```text
+Client → API converts + saves MongoDB → publishes message → RabbitMQ → consumer logs it
+```
+
+| When | What happens |
+|------|----------------|
+| `POST /api/temperatures/convert` succeeds | Event published to `temperature.conversion.queue` |
+| `POST /api/currency/convert` succeeds | Event published to `currency.conversion.queue` |
+
+History / safety-check GETs do **not** publish. MongoDB remains the source of truth for conversion history; RabbitMQ is for async notify / audit / demo messaging.
+
 ### RabbitMQ configuration
 
 | Setting | Value |
@@ -400,11 +418,43 @@ Standalone broker:
 docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3.13-management
 ```
 
+### How to check RabbitMQ
+
+#### 1. Management UI (easiest)
+
+1. Open: **http://localhost:15672**
+2. Login: **guest** / **guest**
+3. Go to **Queues** and find:
+   - `temperature.conversion.queue`
+   - `currency.conversion.queue`
+4. Perform a convert with a valid Bearer token, then refresh — message totals / rates should increase.
+5. Under **Exchanges**, confirm `converthub.exchange` exists.
+
+#### 2. API logs
+
+```powershell
+docker compose logs -f tempconv
+docker compose logs -f currencyconvertor
+```
+
+After a successful convert you should see lines like:
+
+- `Published … conversion event`
+- `Received … conversion event`
+
+#### 3. Confirm the broker container
+
+```powershell
+docker compose ps rabbitmq
+```
+
+Status should be **Up (healthy)**. Ports: **5672** (AMQP), **15672** (management UI).
+
 ### Verify RabbitMQ after convert
 
-1. Call a convert endpoint with a valid Bearer token.
-2. Check API logs for `Published … conversion event` and `Received … conversion event`.
-3. Or open http://localhost:15672 → Queues → inspect message rates on the conversion queues.
+1. Call a convert endpoint with a valid Bearer token (UI or Postman).
+2. Check API logs for `Published …` and `Received … conversion event`.
+3. Or open http://localhost:15672 → **Queues** → inspect message rates on the conversion queues.
 
 ---
 
