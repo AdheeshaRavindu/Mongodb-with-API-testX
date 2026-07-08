@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=4">
 </head>
 
 <body>
@@ -232,6 +232,9 @@
                         <span id="temp-unit-info"></span>
                         <span id="temp-time-info"></span>
                     </div>
+                    <div class="safety-alert hidden" id="temp-safety-alert" role="status" aria-live="polite">
+                        <span id="temp-safety-msg"></span>
+                    </div>
                 </div>
             </div>
 
@@ -239,7 +242,17 @@
             <div class="history-card">
                 <div class="history-header">
                     <h3>Conversion History</h3>
-                    <button class="refresh-btn temp-refresh" onclick="loadTempHistory()">
+                    <div class="history-actions">
+                        <label class="history-filter-label" for="temp-history-filter">
+                            Filter
+                            <select id="temp-history-filter" class="history-filter-select" onchange="loadTempHistory()">
+                                <option value="all">All</option>
+                                <option value="celsius">Celsius</option>
+                                <option value="fahrenheit">Fahrenheit</option>
+                                <option value="kelvin">Kelvin</option>
+                            </select>
+                        </label>
+                        <button class="refresh-btn temp-refresh" onclick="loadTempHistory()">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2">
                             <path d="M1 4v6h6" />
@@ -247,6 +260,7 @@
                         </svg>
                         Refresh
                     </button>
+                    </div>
                 </div>
                 <div class="history-table-wrapper">
                     <table class="history-table" id="temp-history-table">
@@ -290,7 +304,7 @@
         <span id="toast-msg"></span>
     </div>
 
-    <script src="app.js?v=3"></script>
+    <script src="app.js?v=5"></script>
 </body>
 
 </html>

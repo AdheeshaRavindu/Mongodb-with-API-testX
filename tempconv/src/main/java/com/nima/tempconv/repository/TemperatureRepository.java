@@ -9,4 +9,6 @@ import com.nima.tempconv.model.TemperatureLog;
 public interface TemperatureRepository extends MongoRepository<TemperatureLog, String> {
 
     List<TemperatureLog> findByInputUnit(String inputUnit);
+
+    List<TemperatureLog> findByInputUnitIgnoreCase(String inputUnit);
 }

@@ -16,9 +16,8 @@ import com.nima.tempconv.repository.TemperatureRepository;
 @Service
 public class TemperatureService {
 
-    private static final double HOT_FAHRENHEIT_THRESHOLD = 100.0;
-    private static final double COMFORT_CELSIUS_MIN = 15.0;
-    private static final double COMFORT_CELSIUS_MAX = 30.0;
+    private static final double DANGEROUS_HEAT_CELSIUS = 38.0;
+    private static final double FREEZING_CELSIUS = 0.0;
 
     private final TemperatureRepository temperatureRepository;
     private final ApiKeyRepository apiKeyRepository;
@@ -74,14 +73,15 @@ public class TemperatureService {
         return temperatureRepository.save(log);
     }
 
-    public String checkSafety(double value, String unit) {
+    public String getSafetyWarning(double value, String unit) {
         String normalizedUnit = normalize(unit);
         if (normalizedUnit.isEmpty() || !isSupportedUnit(normalizedUnit)) {
             throw new IllegalArgumentException("Unsupported unit. Use Celsius, Fahrenheit, or Kelvin.");
         }
 
-        double fahrenheit = toFahrenheit(value, normalizedUnit);
-        if (fahrenheit > HOT_FAHRENHEIT_THRESHOLD) {
+        double celsius = toCelsius(value, normalizedUnit);
+
+        if (celsius >= DANGEROUS_HEAT_CELSIUS) {
             return String.format(
                     Locale.US,
                     "Warning: %.1f%s is dangerously HOT! Stay hydrated.",
@@ -89,16 +89,15 @@ public class TemperatureService {
                     unitSymbol(normalizedUnit));
         }
 
-        double celsius = toCelsius(value, normalizedUnit);
-        if (celsius >= COMFORT_CELSIUS_MIN && celsius <= COMFORT_CELSIUS_MAX) {
-            return "The temperature is comfortable and safe.";
+        if (celsius <= FREEZING_CELSIUS) {
+            return String.format(
+                    Locale.US,
+                    "Warning: %.1f%s is at freezing level or below. Take care in icy conditions.",
+                    value,
+                    unitSymbol(normalizedUnit));
         }
 
-        return String.format(
-                Locale.US,
-                "Warning: %.1f%s is outside the comfortable range. Use caution.",
-                value,
-                unitSymbol(normalizedUnit));
+        return "The temperature is comfortable and safe.";
     }
 
     public List<TemperatureLog> getHistory() {
@@ -106,21 +105,11 @@ public class TemperatureService {
     }
 
     public List<TemperatureLog> getHistoryByUnit(String unit) {
-        String normalizedUnit = normalize(unit);
-        if (normalizedUnit.isEmpty() || !isSupportedUnit(normalizedUnit)) {
-            throw new IllegalArgumentException("Unsupported unit. Use Celsius, Fahrenheit, or Kelvin.");
+        if (unit == null || unit.isBlank()) {
+            throw new IllegalArgumentException("Unit parameter is required.");
         }
 
-        return temperatureRepository.findByInputUnit(formatUnit(normalizedUnit));
-    }
-
-    private double toFahrenheit(double value, String normalizedUnit) {
-        return switch (normalizedUnit) {
-            case "celsius" -> (value * 1.8) + 32;
-            case "fahrenheit" -> value;
-            case "kelvin" -> ((value - 273.15) * 1.8) + 32;
-            default -> throw new IllegalArgumentException("Unsupported unit. Use Celsius, Fahrenheit, or Kelvin.");
-        };
+        return temperatureRepository.findByInputUnitIgnoreCase(unit.trim());
     }
 
     private double toCelsius(double value, String normalizedUnit) {

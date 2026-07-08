@@ -36,7 +36,7 @@ public class TemperatureController {
 
     @GetMapping(value = "/safety-check", produces = MediaType.TEXT_PLAIN_VALUE)
     public String safetyCheck(@RequestParam double value, @RequestParam String unit) {
-        return temperatureService.checkSafety(value, unit);
+        return temperatureService.getSafetyWarning(value, unit);
     }
 
     @GetMapping("/history")

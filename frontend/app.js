@@ -183,6 +183,7 @@ async function convertTemperature() {
 
         showToast('Conversion successful! 🔥', 'success');
         loadTempHistory();
+        fetchAndShowSafetyWarning(value, unit);
 
     } catch (err) {
         console.error('Temperature conversion error:', err);
@@ -196,31 +197,81 @@ async function convertTemperature() {
     }
 }
 
-async function loadTempHistory() {
-    const tbody = document.getElementById('temp-history-body');
-
+async function fetchAndShowSafetyWarning(value, unit) {
     try {
-        const res = await fetch(`${TEMP_API}/history`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-
-        if (!data.length) {
-            tbody.innerHTML = '<tr class="empty-row"><td colspan="5">No conversion history yet</td></tr>';
+        const res = await fetch(
+            `${TEMP_API}/safety-check?value=${encodeURIComponent(value)}&unit=${encodeURIComponent(unit)}`
+        );
+        if (!res.ok) {
+            const errText = await res.text().catch(() => '');
+            showSafetyAlert(
+                errText || 'Safety check unavailable. Ensure the temperature API is running on port 8081.',
+                'warning'
+            );
             return;
         }
+        const message = (await res.text()).trim();
+        if (message) {
+            showSafetyAlert(message);
+        }
+    } catch (err) {
+        console.warn('Safety check error:', err);
+        showSafetyAlert(
+            'Could not load safety warning. Check that the temperature API is reachable.',
+            'warning'
+        );
+    }
+}
 
-        const unitSymbols = { Celsius: '°C', Fahrenheit: '°F', Kelvin: 'K' };
-        const sorted = [...data].reverse();
+function showSafetyAlert(message, forceType) {
+    const alert = document.getElementById('temp-safety-alert');
+    const msg = document.getElementById('temp-safety-msg');
+    if (!alert || !msg) {
+        console.warn('Safety alert element missing — rebuild frontend container.');
+        return;
+    }
 
-        tbody.innerHTML = sorted.map((item, i) => `
-            <tr style="animation: fadeInUp 0.3s ease-out ${i * 0.05}s both">
-                <td style="color: var(--text-muted)">${sorted.length - i}</td>
-                <td><strong>${formatNumber(item.inputTemperature)} ${unitSymbols[item.inputUnit] || ''}</strong></td>
-                <td style="color: var(--accent-rose); font-weight: 600">${formatNumber(item.outputTemperature)} ${unitSymbols[item.outputUnit] || ''}</td>
-                <td>${item.inputUnit} → ${item.outputUnit}</td>
-                <td style="color: var(--text-secondary); font-size: 0.75rem">${formatTimestamp(item.timestamp)}</td>
-            </tr>
-        `).join('');
+    const isSafe = forceType === 'safe'
+        || (!forceType && message.toLowerCase().includes('comfortable and safe'));
+    alert.className = `safety-alert ${isSafe ? 'safety-alert-safe' : 'safety-alert-warning'}`;
+    msg.textContent = message;
+    alert.classList.remove('hidden');
+}
+
+function renderTempHistoryRows(data) {
+    const tbody = document.getElementById('temp-history-body');
+    const unitSymbols = { Celsius: '°C', Fahrenheit: '°F', Kelvin: 'K' };
+
+    if (!data.length) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="5">No conversion history yet</td></tr>';
+        return;
+    }
+
+    const sorted = [...data].reverse();
+    tbody.innerHTML = sorted.map((item, i) => `
+        <tr style="animation: fadeInUp 0.3s ease-out ${i * 0.05}s both">
+            <td style="color: var(--text-muted)">${sorted.length - i}</td>
+            <td><strong>${formatNumber(item.inputTemperature)} ${unitSymbols[item.inputUnit] || ''}</strong></td>
+            <td style="color: var(--accent-rose); font-weight: 600">${formatNumber(item.outputTemperature)} ${unitSymbols[item.outputUnit] || ''}</td>
+            <td>${item.inputUnit} → ${item.outputUnit}</td>
+            <td style="color: var(--text-secondary); font-size: 0.75rem">${formatTimestamp(item.timestamp)}</td>
+        </tr>
+    `).join('');
+}
+
+async function loadTempHistory() {
+    const tbody = document.getElementById('temp-history-body');
+    const filterEl = document.getElementById('temp-history-filter');
+    const filter = filterEl ? filterEl.value : 'all';
+    const url = filter === 'all'
+        ? `${TEMP_API}/history`
+        : `${TEMP_API}/history/filter?unit=${encodeURIComponent(filter)}`;
+
+    try {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        renderTempHistoryRows(data);
 
     } catch (err) {
         console.error('Load temp history error:', err);
