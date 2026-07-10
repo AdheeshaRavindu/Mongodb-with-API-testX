@@ -39,13 +39,23 @@ Frontend (3000) ──┬── Temperature API (8081) ── MongoDB temp_db (2
 
 ## Quick start (Docker)
 
-Set your Google OAuth **Client ID** (from [Google Cloud Console](https://console.cloud.google.com/apis/credentials)):
+### One-time: create `.env`
 
-```bash
-# Windows PowerShell
-$env:GOOGLE_CLIENT_ID="YOUR_CLIENT_ID.apps.googleusercontent.com"
-docker compose up --build
+```powershell
+copy .env.example .env
+# Edit .env — set GOOGLE_CLIENT_ID to your Client ID from Google Cloud Console
 ```
+
+### Start
+
+```powershell
+docker compose up -d
+```
+
+Open **http://localhost:3000** → click **Get token** in the auth bar → Sign in with Google → **Use in ConvertHub**.
+
+After code changes: `docker compose up --build -d`  
+After `.env` changes: `docker compose up -d --force-recreate tempconv currencyconvertor`
 
 Or run RabbitMQ alone:
 
@@ -53,7 +63,7 @@ Or run RabbitMQ alone:
 docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3.13-management
 ```
 
-Open **http://localhost:3000** for the UI. Paste a Google ID token in the auth bar.
+Open **http://localhost:3000** for the UI. Use **Get token** on the home page to sign in with Google.
 
 Stop:
 
@@ -65,9 +75,10 @@ docker compose down
 
 ```
 Mongodb-with-API-testX/
+├── .env.example        # Copy to .env once (not in git)
 ├── tempconv/           # Temperature microservice (8081)
 ├── currencyconvertor/  # Currency microservice (8082)
-├── frontend/           # Web UI
+├── frontend/           # Web UI + get-token.html
 ├── docs/               # Guides, seed script
 └── docker-compose.yml
 ```

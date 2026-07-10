@@ -56,23 +56,38 @@ Step-by-step instructions for running, testing, and troubleshooting **ConvertHub
 
 ## 2. Start the app (Docker)
 
+### One-time setup: `.env` file
+
+Docker Compose reads [`.env`](../.env) from the project root. Create it **once** (not every run):
+
+```powershell
+copy .env.example .env
+```
+
+Edit `.env` and set your real Google Client ID:
+
+```env
+GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
+```
+
+> **Important:** If `.env` is missing, APIs use `YOUR_GOOGLE_CLIENT_ID` and every request returns **401**, even with a valid token.
+
+After changing `.env`, recreate the API containers (no full rebuild needed):
+
+```powershell
+docker compose up -d --force-recreate tempconv currencyconvertor
+```
+
 ### Commands
 
 From the project root (`Mongodb-with-API-testX/`):
 
-```bash
-# Set Google OAuth Client ID (required for JWT audience validation)
-# PowerShell:
-$env:GOOGLE_CLIENT_ID="YOUR_CLIENT_ID.apps.googleusercontent.com"
-
-# Start everything (build + run)
-docker compose up --build
-```
-
-Run in the background:
-
-```bash
+```powershell
+# First time or after code changes
 docker compose up --build -d
+
+# Normal run (no code changes)
+docker compose up -d
 ```
 
 RabbitMQ alone (without full compose):
@@ -119,11 +134,11 @@ Then open **http://localhost:3000**.
 ### Open the app
 
 1. Go to **http://localhost:3000**
-2. In the centered **Google ID Token** bar (under the navbar):
-   - Paste your Bearer token (from [http://localhost:3000/get-token.html](http://localhost:3000/get-token.html))
-   - Click **Save**
-   - Status should change from `Not set — API calls will return 401` to `Token set — Authorization: Bearer will be sent`
-3. You should see the ConvertHub hero, navbar, and converter cards
+2. Click **Get token** in the auth bar (or open [http://localhost:3000/get-token.html](http://localhost:3000/get-token.html))
+3. Sign in with Google → click **Use in ConvertHub** (saves token and returns home)  
+   Or copy the token and paste it into the auth bar → **Save**
+4. Status should change to `Token set — Authorization: Bearer will be sent`
+5. Use Currency / Temperature converters as usual
 
 ### Currency converter
 
@@ -342,11 +357,11 @@ Leave **Client Secret** unused for these APIs.
 
 ### How to get a Google ID token (step by step)
 
-1. Start the stack (`docker compose up --build`) so the UI is on port **3000**.
-2. Open **http://localhost:3000/get-token.html**  
-   (If you get **404**, rebuild the frontend: `docker compose build --no-cache frontend` then `docker compose up -d frontend`.)
+1. Start the stack (`docker compose up -d`) and confirm `.env` has your real `GOOGLE_CLIENT_ID`.
+2. From the home page, click **Get token** in the auth bar — or open **http://localhost:3000/get-token.html** directly.
 3. Click **Sign in with Google**, choose your account, and allow access.
-4. A long JWT appears in the text box — that **entire** string is your ID token. Click **Copy token**.
+4. Click **Use in ConvertHub** to save the token and go back home automatically.  
+   Or click **Copy token** for Postman/curl.
 5. Optional check: paste the token at [jwt.io](https://jwt.io). You should see:
    - `iss` = `https://accounts.google.com`
    - `aud` = your Client ID (must match `.env`)
@@ -357,9 +372,9 @@ Leave **Client Secret** unused for these APIs.
 
 #### ConvertHub UI
 
-1. Open **http://localhost:3000**
-2. Paste the token into the **Google ID Token** bar → **Save**
-3. Use Currency / Temperature converters as usual
+1. Home → **Get token** → Sign in → **Use in ConvertHub**  
+   Or paste manually into the auth bar → **Save**
+2. Convert as usual on **http://localhost:3000**
 
 #### Postman (important)
 
@@ -500,11 +515,21 @@ Live URLs after deploy:
 
 ### `401 Unauthorized` on `/api/**`
 
-**In Postman:** Use Auth Type **Bearer Token** (not OAuth 2.0). Paste a fresh token from http://localhost:3000/get-token.html. Ensure token `aud` matches `GOOGLE_CLIENT_ID` in `.env`.
+**Check `.env` first:** APIs must not be using `YOUR_GOOGLE_CLIENT_ID`.
 
-**In curl:** Header must be `Authorization: Bearer <full_token>` with one space and no quotes around the token value.
+```powershell
+docker inspect tempconv --format "{{range .Config.Env}}{{println .}}{{end}}" | Select-String "GOOGLE"
+```
 
-**In the web UI:** Paste the token in the auth bar → **Save**, then hard refresh (**Ctrl+F5**). Rebuild frontend if UI is stale:
+If wrong, fix `.env` then:
+
+```powershell
+docker compose up -d --force-recreate tempconv currencyconvertor
+```
+
+**In Postman:** Use Auth Type **Bearer Token** (not OAuth 2.0). Get a fresh token from home → **Get token** or http://localhost:3000/get-token.html.
+
+**In the web UI:** Click **Get token** → **Use in ConvertHub**, or paste in the auth bar → **Save**, then hard refresh (**Ctrl+F5**). Rebuild frontend if UI is stale:
 
 ```bash
 docker compose build --no-cache frontend

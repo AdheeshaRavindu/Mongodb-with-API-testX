@@ -4,69 +4,141 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ConvertHub — Get Google ID Token</title>
+  <link rel="stylesheet" href="style.css?v=5">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
-    body {
-      font-family: system-ui, sans-serif;
-      max-width: 720px;
-      margin: 40px auto;
-      padding: 0 16px;
-      background: #1a1916;
-      color: #f2efe8;
+    body.get-token-page {
+      min-height: 100vh;
+      padding: 24px 16px 48px;
     }
-    h1 { font-size: 1.4rem; }
-    p { color: #c4beb3; line-height: 1.5; }
-    textarea {
+
+    .get-token-wrap {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    .get-token-nav {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 24px;
+      flex-wrap: wrap;
+    }
+
+    .get-token-nav a {
+      color: var(--text-primary, #2c2a26);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .get-token-card {
+      background: rgba(255, 255, 255, 0.72);
+      border: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.08));
+      border-radius: 20px;
+      padding: 28px;
+      box-shadow: var(--shadow-md, 0 10px 30px rgba(0, 0, 0, 0.08));
+    }
+
+    .get-token-card h1 {
+      margin: 0 0 8px;
+      font-size: 1.6rem;
+    }
+
+    .get-token-card p {
+      color: var(--text-secondary, #5c574f);
+      line-height: 1.6;
+      margin: 0 0 20px;
+    }
+
+    .get-token-card textarea {
       width: 100%;
       min-height: 160px;
       margin-top: 12px;
       padding: 12px;
-      border-radius: 8px;
-      border: 1px solid #4a463e;
-      background: #2a2722;
-      color: #f2efe8;
-      font-family: ui-monospace, monospace;
+      border-radius: 10px;
+      border: 1px solid rgba(0, 0, 0, 0.12);
+      background: #fff;
+      color: #1a1916;
+      font-family: 'IBM Plex Mono', ui-monospace, monospace;
       font-size: 12px;
+      box-sizing: border-box;
     }
-    button {
-      margin-top: 10px;
+
+    .get-token-actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .get-token-btn {
       padding: 10px 16px;
       border: 0;
-      border-radius: 8px;
-      background: #e8e0d4;
-      color: #1a1916;
+      border-radius: 10px;
+      background: #4d4940;
+      color: #fff;
       font-weight: 600;
       cursor: pointer;
     }
-    .hint { font-size: 0.9rem; margin-top: 20px; }
-    code { background: #2a2722; padding: 2px 6px; border-radius: 4px; }
+
+    .get-token-btn.secondary {
+      background: #e8e0d4;
+      color: #2c2a26;
+    }
+
+    .get-token-hint {
+      margin-top: 20px;
+      font-size: 0.92rem;
+      color: var(--text-secondary, #5c574f);
+    }
+
+    .get-token-hint code {
+      background: rgba(0, 0, 0, 0.06);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
   </style>
 </head>
-<body>
-  <h1>Get Google ID Token</h1>
-  <p>
-    Sign in with Google below. Your ID token will appear in the box.
-    Copy it and use it as <code>Authorization: Bearer &lt;token&gt;</code>.
-  </p>
+<body class="get-token-page">
+  <div class="get-token-wrap">
+    <div class="get-token-nav">
+      <a href="/">← Back to ConvertHub</a>
+      <span style="color: var(--text-muted, #8a8478); font-size: 0.9rem;">Sign in to call secured APIs</span>
+    </div>
 
-  <div id="g_id_onload"
-       data-client_id="860796838827-g7bn0tq1cc50sndut1rukdl19t4tgm6h.apps.googleusercontent.com"
-       data-callback="handleCredential"
-       data-auto_prompt="false">
-  </div>
-  <div class="g_id_signin" data-type="standard" data-theme="outline" data-size="large"></div>
+    <div class="get-token-card">
+      <h1>Get Google ID Token</h1>
+      <p>
+        Sign in with Google below. Your ID token appears in the box.
+        Use <strong>Use in ConvertHub</strong> to save it and return home, or copy it for Postman.
+      </p>
 
-  <label for="token"><strong>Your Google ID token</strong></label>
-  <textarea id="token" readonly placeholder="Sign in to see the token here..."></textarea>
-  <button type="button" onclick="copyToken()">Copy token</button>
+      <div id="g_id_onload"
+           data-client_id="860796838827-g7bn0tq1cc50sndut1rukdl19t4tgm6h.apps.googleusercontent.com"
+           data-callback="handleCredential"
+           data-auto_prompt="false">
+      </div>
+      <div class="g_id_signin" data-type="standard" data-theme="outline" data-size="large"></div>
 
-  <div class="hint">
-    <p><strong>Postman / curl header:</strong></p>
-    <p><code>Authorization: Bearer </code> + paste the token (no extra spaces)</p>
-    <p>Or paste into the auth bar on <a href="/" style="color:#9fd3ff">http://localhost:3000</a> and click Save.</p>
+      <label for="token"><strong>Your Google ID token</strong></label>
+      <textarea id="token" readonly placeholder="Sign in to see the token here..."></textarea>
+
+      <div class="get-token-actions">
+        <button type="button" class="get-token-btn" onclick="useInConvertHub()">Use in ConvertHub</button>
+        <button type="button" class="get-token-btn secondary" onclick="copyToken()">Copy token</button>
+      </div>
+
+      <div class="get-token-hint">
+        <p><strong>Postman / curl:</strong> <code>Authorization: Bearer &lt;token&gt;</code></p>
+        <p>Tokens expire in about an hour — come back here and sign in again when you get 401.</p>
+      </div>
+    </div>
   </div>
 
   <script>
+    const TOKEN_STORAGE_KEY = 'converthub_google_id_token';
+
     function handleCredential(response) {
       document.getElementById('token').value = response.credential;
     }
@@ -78,6 +150,16 @@
         return;
       }
       navigator.clipboard.writeText(el.value).then(() => alert('Token copied!'));
+    }
+
+    function useInConvertHub() {
+      const token = document.getElementById('token').value.trim();
+      if (!token) {
+        alert('Sign in first to get a token.');
+        return;
+      }
+      localStorage.setItem(TOKEN_STORAGE_KEY, token);
+      window.location.href = '/';
     }
   </script>
 </body>
