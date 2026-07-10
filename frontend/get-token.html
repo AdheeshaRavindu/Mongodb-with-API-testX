@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ConvertHub — Get Google ID Token</title>
-  <link rel="stylesheet" href="style.css?v=5">
+  <link rel="stylesheet" href="style.css?v=6">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     body.get-token-page {
@@ -26,10 +26,40 @@
       flex-wrap: wrap;
     }
 
-    .get-token-nav a {
-      color: var(--text-primary, #2c2a26);
+    .get-token-nav-links {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .get-token-home-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 16px;
+      border-radius: 10px;
+      background: #4d4940;
+      color: #fff;
       text-decoration: none;
-      font-weight: 600;
+      font-weight: 700;
+      font-size: 0.9rem;
+    }
+
+    .get-token-home-link:hover {
+      filter: brightness(1.08);
+      color: #fff;
+    }
+
+    .get-token-home-link.secondary {
+      background: rgba(47, 111, 168, 0.15);
+      color: #1f4d3c;
+      border: 1px solid rgba(47, 111, 168, 0.25);
+    }
+
+    .get-token-home-link.secondary:hover {
+      background: rgba(47, 111, 168, 0.25);
+      color: #143d30;
     }
 
     .get-token-card {
@@ -103,7 +133,10 @@
 <body class="get-token-page">
   <div class="get-token-wrap">
     <div class="get-token-nav">
-      <a href="/">← Back to ConvertHub</a>
+      <div class="get-token-nav-links">
+        <a href="/" class="get-token-home-link">← Back to ConvertHub</a>
+        <a href="http://localhost:15672" target="_blank" rel="noopener noreferrer" class="get-token-home-link secondary">RabbitMQ dashboard</a>
+      </div>
       <span style="color: var(--text-muted, #8a8478); font-size: 0.9rem;">Sign in to call secured APIs</span>
     </div>
 

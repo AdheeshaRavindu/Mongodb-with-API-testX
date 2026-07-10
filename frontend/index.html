@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=5">
+    <link rel="stylesheet" href="style.css?v=6">
 </head>
 
 <body>
@@ -63,8 +63,9 @@
 
     <!-- Google OAuth token (local testing) -->
     <div class="auth-bar" id="auth-bar">
+        <a href="/get-token.html" class="auth-get-token-link auth-get-token-link--primary">Get token</a>
+        <a href="http://localhost:15672" target="_blank" rel="noopener noreferrer" class="auth-quick-link">RabbitMQ dashboard</a>
         <label class="auth-label" for="google-id-token">Google ID Token</label>
-        <a href="/get-token.html" class="auth-get-token-link">Get token</a>
         <input type="password" id="google-id-token" class="auth-token-input" placeholder="Paste Bearer token for /api/** calls" autocomplete="off">
         <button type="button" class="auth-save-btn" id="btn-save-token" onclick="saveGoogleIdToken()">Save</button>
         <span class="auth-hint" id="auth-token-status">Not set — API calls will return 401</span>
@@ -80,7 +81,11 @@
         <ul class="hero-features" aria-label="Highlights">
             <li><span class="feature-dot currency-dot"></span> Currency history</li>
             <li><span class="feature-dot temp-dot"></span> Temperature logs</li>
-            <li><span class="feature-dot neutral-dot"></span> Keyboard friendly</li>
+            <li>
+                <a href="http://localhost:15672" target="_blank" rel="noopener noreferrer" class="hero-feature-link">
+                    <span class="feature-dot rabbit-dot"></span> RabbitMQ dashboard
+                </a>
+            </li>
         </ul>
     </header>
 
