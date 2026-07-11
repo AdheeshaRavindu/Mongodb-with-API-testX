@@ -4,6 +4,9 @@
 
 // API Endpoints
 const isLocalRuntime = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+const AUTH_API = isLocalRuntime
+    ? 'http://localhost:8081/auth/google'
+    : 'https://temperature-converter.vikumkodikara123.workers.dev/auth/google';
 const CURRENCY_API = isLocalRuntime
     ? 'http://localhost:8082/api/currency'
     : 'https://currency-converter.vikumkodikara123.workers.dev/api/currency';
@@ -11,52 +14,170 @@ const TEMP_API = isLocalRuntime
     ? 'http://localhost:8081/api/temperatures'
     : 'https://temperature-converter.vikumkodikara123.workers.dev/api/temperatures';
 
-const TOKEN_STORAGE_KEY = 'converthub_google_id_token';
+const APP_TOKEN_KEY = 'converthub_app_jwt';
+const USER_KEY = 'converthub_user';
 
-function getGoogleIdToken() {
-    const input = document.getElementById('google-id-token');
-    if (input && input.value.trim()) {
-        return input.value.trim();
-    }
-    return localStorage.getItem(TOKEN_STORAGE_KEY) || '';
+function getAppToken() {
+    return localStorage.getItem(APP_TOKEN_KEY) || '';
 }
 
-function saveGoogleIdToken() {
-    const input = document.getElementById('google-id-token');
-    const token = input ? input.value.trim() : '';
-    if (token) {
-        localStorage.setItem(TOKEN_STORAGE_KEY, token);
-        updateAuthStatus(true);
-        showToast('Google ID token saved', 'success');
+function getStoredUser() {
+    const raw = localStorage.getItem(USER_KEY);
+    if (!raw) return null;
+    try {
+        return JSON.parse(raw);
+    } catch {
+        return null;
+    }
+}
+
+function saveAuthSession(token, user) {
+    localStorage.setItem(APP_TOKEN_KEY, token);
+    localStorage.setItem(USER_KEY, JSON.stringify(user));
+    updateAuthBarUI();
+}
+
+function clearAuthSession() {
+    localStorage.removeItem(APP_TOKEN_KEY);
+    localStorage.removeItem(USER_KEY);
+    localStorage.removeItem('converthub_google_id_token');
+    updateAuthBarUI();
+}
+
+function logout() {
+    clearAuthSession();
+    showToast('Signed out', 'success');
+}
+
+async function copyAppToken() {
+    const token = getAppToken();
+    if (!token) return;
+
+    try {
+        await navigator.clipboard.writeText(token);
+        showToast('Token copied for Postman', 'success');
+    } catch {
+        showToast('Could not copy token', 'error');
+    }
+}
+
+function promptSignInOnHome() {
+    updateAuthBarUI();
+    const authBar = document.getElementById('auth-bar');
+    if (authBar) {
+        authBar.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+}
+
+function handleUnauthorized() {
+    clearAuthSession();
+    showToast('Session expired — please sign in again', 'error');
+    if (window.location.pathname === '/' || window.location.pathname.endsWith('/index.html')) {
+        promptSignInOnHome();
     } else {
-        localStorage.removeItem(TOKEN_STORAGE_KEY);
-        updateAuthStatus(false);
-        showToast('Token cleared', 'error');
+        window.location.href = '/?signin=required';
     }
 }
 
-function updateAuthStatus(hasToken) {
+function updateAuthBarUI() {
+    const token = getAppToken();
+    const user = getStoredUser();
     const status = document.getElementById('auth-token-status');
-    if (!status) return;
-    status.textContent = hasToken
-        ? 'Token set — Authorization: Bearer will be sent'
-        : 'Not set — API calls will return 401';
+    const signInContainer = document.getElementById('auth-signin-container');
+    const userBox = document.getElementById('auth-user');
+    const userName = document.getElementById('auth-user-name');
+    const userPicture = document.getElementById('auth-user-picture');
+    const logoutBtn = document.getElementById('btn-logout');
+    const copyTokenBtn = document.getElementById('btn-copy-token');
+
+    const isLoggedIn = Boolean(token);
+
+    if (status) {
+        status.textContent = isLoggedIn
+            ? `Signed in as ${user?.name || user?.email || 'user'}`
+            : 'Not signed in — API calls will return 401';
+    }
+
+    if (signInContainer) signInContainer.hidden = isLoggedIn;
+    if (logoutBtn) logoutBtn.hidden = !isLoggedIn;
+    if (copyTokenBtn) copyTokenBtn.hidden = !isLoggedIn;
+    if (userBox) userBox.hidden = !isLoggedIn;
+
+    if (isLoggedIn && user) {
+        if (userName) userName.textContent = user.name || user.email || 'Signed in';
+        if (userPicture) {
+            if (user.picture) {
+                userPicture.src = user.picture;
+                userPicture.hidden = false;
+            } else {
+                userPicture.hidden = true;
+            }
+        }
+    }
 }
 
 function authHeaders() {
-    const token = getGoogleIdToken();
+    const token = getAppToken();
     if (!token) {
         return {};
     }
     return { Authorization: `Bearer ${token}` };
 }
 
-function requireTokenOrToast() {
-    if (!getGoogleIdToken()) {
-        showToast('Paste a Google ID token in the auth bar first', 'error');
+function requireAuthOrToast() {
+    if (!getAppToken()) {
+        showToast('Sign in with Google first', 'error');
         return false;
     }
     return true;
+}
+
+async function handleCredential(response) {
+    try {
+        const data = await exchangeGoogleToken(response.credential);
+        localStorage.removeItem('converthub_google_id_token');
+        saveAuthSession(data.token, data.user);
+        const displayName = data.user?.name || data.user?.email || 'user';
+        showToast(`Signed in as ${displayName}`, 'success');
+        loadCurrencyHistory();
+    } catch (err) {
+        console.error('Auth exchange failed:', err);
+        showToast(`Sign-in failed: ${err.message}`, 'error');
+    }
+}
+
+window.handleCredential = handleCredential;
+
+async function exchangeGoogleToken(idToken) {
+    const res = await fetch(AUTH_API, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken })
+    });
+
+    if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText || `Authentication failed (HTTP ${res.status})`);
+    }
+
+    return res.json();
+}
+
+async function authFetch(url, options = {}) {
+    const res = await fetch(url, {
+        ...options,
+        headers: {
+            ...(options.headers || {}),
+            ...authHeaders()
+        }
+    });
+
+    if (res.status === 401) {
+        handleUnauthorized();
+        throw new Error('Unauthorized');
+    }
+
+    return res;
 }
 
 // ==========================================
@@ -103,7 +224,7 @@ async function convertCurrency() {
         return;
     }
 
-    if (!requireTokenOrToast()) return;
+    if (!requireAuthOrToast()) return;
 
     btn.classList.add('loading');
     btn.innerHTML = `
@@ -112,9 +233,8 @@ async function convertCurrency() {
     `;
 
     try {
-        const res = await fetch(`${CURRENCY_API}/convert?usdAmount=${amount}`, {
-            method: 'POST',
-            headers: authHeaders()
+        const res = await authFetch(`${CURRENCY_API}/convert?usdAmount=${amount}`, {
+            method: 'POST'
         });
 
         if (!res.ok) {
@@ -136,8 +256,10 @@ async function convertCurrency() {
         loadCurrencyHistory();
 
     } catch (err) {
-        console.error('Currency conversion error:', err);
-        showToast(`Could not reach currency API: ${err.message}`, 'error');
+        if (err.message !== 'Unauthorized') {
+            console.error('Currency conversion error:', err);
+            showToast(`Could not reach currency API: ${err.message}`, 'error');
+        }
     } finally {
         btn.classList.remove('loading');
         btn.innerHTML = `
@@ -151,7 +273,7 @@ async function loadCurrencyHistory() {
     const tbody = document.getElementById('currency-history-body');
 
     try {
-        const res = await fetch(`${CURRENCY_API}/history`, { headers: authHeaders() });
+        const res = await authFetch(`${CURRENCY_API}/history`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
 
@@ -172,8 +294,9 @@ async function loadCurrencyHistory() {
         `).join('');
 
     } catch (err) {
+        if (err.message === 'Unauthorized') return;
         console.error('Load currency history error:', err);
-        tbody.innerHTML = '<tr class="empty-row"><td colspan="5" class="history-error">Could not load history. Check token and connection.</td></tr>';
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="5" class="history-error">Could not load history. Sign in and check your connection.</td></tr>';
     }
 }
 
@@ -192,7 +315,7 @@ async function convertTemperature() {
         return;
     }
 
-    if (!requireTokenOrToast()) return;
+    if (!requireAuthOrToast()) return;
 
     btn.classList.add('loading');
     btn.innerHTML = `
@@ -201,9 +324,8 @@ async function convertTemperature() {
     `;
 
     try {
-        const res = await fetch(`${TEMP_API}/convert?value=${value}&unit=${unit}`, {
-            method: 'POST',
-            headers: authHeaders()
+        const res = await authFetch(`${TEMP_API}/convert?value=${value}&unit=${unit}`, {
+            method: 'POST'
         });
 
         if (!res.ok) {
@@ -230,8 +352,10 @@ async function convertTemperature() {
         fetchAndShowSafetyWarning(value, unit);
 
     } catch (err) {
-        console.error('Temperature conversion error:', err);
-        showToast(`Could not reach temperature API: ${err.message}`, 'error');
+        if (err.message !== 'Unauthorized') {
+            console.error('Temperature conversion error:', err);
+            showToast(`Could not reach temperature API: ${err.message}`, 'error');
+        }
     } finally {
         btn.classList.remove('loading');
         btn.innerHTML = `
@@ -243,9 +367,8 @@ async function convertTemperature() {
 
 async function fetchAndShowSafetyWarning(value, unit) {
     try {
-        const res = await fetch(
-            `${TEMP_API}/safety-check?value=${encodeURIComponent(value)}&unit=${encodeURIComponent(unit)}`,
-            { headers: authHeaders() }
+        const res = await authFetch(
+            `${TEMP_API}/safety-check?value=${encodeURIComponent(value)}&unit=${encodeURIComponent(unit)}`
         );
         if (!res.ok) {
             const errText = await res.text().catch(() => '');
@@ -260,6 +383,7 @@ async function fetchAndShowSafetyWarning(value, unit) {
             showSafetyAlert(message);
         }
     } catch (err) {
+        if (err.message === 'Unauthorized') return;
         console.warn('Safety check error:', err);
         showSafetyAlert(
             'Could not load safety warning. Check that the temperature API is reachable.',
@@ -313,14 +437,15 @@ async function loadTempHistory() {
         : `${TEMP_API}/history/filter?unit=${encodeURIComponent(filter)}`;
 
     try {
-        const res = await fetch(url, { headers: authHeaders() });
+        const res = await authFetch(url);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
         renderTempHistoryRows(data);
 
     } catch (err) {
+        if (err.message === 'Unauthorized') return;
         console.error('Load temp history error:', err);
-        tbody.innerHTML = '<tr class="empty-row"><td colspan="5" class="history-error">Could not load history. Check token and connection.</td></tr>';
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="5" class="history-error">Could not load history. Sign in and check your connection.</td></tr>';
     }
 }
 
@@ -409,11 +534,15 @@ document.head.appendChild(spinStyle);
 //  INIT
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
-    const input = document.getElementById('google-id-token');
-    const saved = localStorage.getItem(TOKEN_STORAGE_KEY) || '';
-    if (input && saved) {
-        input.value = saved;
-    }
-    updateAuthStatus(Boolean(saved));
+    updateAuthBarUI();
     loadCurrencyHistory();
+
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('signin') === 'required') {
+        showToast('Please sign in with Google to continue', 'error');
+        promptSignInOnHome();
+        params.delete('signin');
+        const newUrl = params.toString() ? `/?${params}` : '/';
+        window.history.replaceState({}, '', newUrl);
+    }
 });

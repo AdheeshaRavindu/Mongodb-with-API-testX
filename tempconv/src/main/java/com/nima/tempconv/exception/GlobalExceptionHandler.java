@@ -9,6 +9,12 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class GlobalExceptionHandler {
 
     @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    @ExceptionHandler(InvalidGoogleTokenException.class)
+    public String handleInvalidGoogleToken(InvalidGoogleTokenException ex) {
+        return ex.getMessage();
+    }
+
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
     @ExceptionHandler(UnauthorizedApiKeyException.class)
     public String handleUnauthorizedApiKey(UnauthorizedApiKeyException ex) {
         return ex.getMessage();

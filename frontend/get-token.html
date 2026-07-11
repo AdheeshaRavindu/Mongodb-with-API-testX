@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ConvertHub — Get Google ID Token</title>
-  <link rel="stylesheet" href="style.css?v=6">
+  <title>ConvertHub — Sign in with Google</title>
+  <link rel="stylesheet" href="style.css?v=7">
   <script src="https://accounts.google.com/gsi/client" async defer></script>
   <style>
     body.get-token-page {
@@ -57,11 +57,6 @@
       border: 1px solid rgba(47, 111, 168, 0.25);
     }
 
-    .get-token-home-link.secondary:hover {
-      background: rgba(47, 111, 168, 0.25);
-      color: #143d30;
-    }
-
     .get-token-card {
       background: rgba(255, 255, 255, 0.72);
       border: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.08));
@@ -81,52 +76,17 @@
       margin: 0 0 20px;
     }
 
-    .get-token-card textarea {
-      width: 100%;
-      min-height: 160px;
-      margin-top: 12px;
-      padding: 12px;
-      border-radius: 10px;
-      border: 1px solid rgba(0, 0, 0, 0.12);
-      background: #fff;
-      color: #1a1916;
-      font-family: 'IBM Plex Mono', ui-monospace, monospace;
-      font-size: 12px;
-      box-sizing: border-box;
-    }
-
-    .get-token-actions {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      margin-top: 12px;
-    }
-
-    .get-token-btn {
-      padding: 10px 16px;
-      border: 0;
-      border-radius: 10px;
-      background: #4d4940;
-      color: #fff;
-      font-weight: 600;
-      cursor: pointer;
-    }
-
-    .get-token-btn.secondary {
-      background: #e8e0d4;
-      color: #2c2a26;
+    .get-token-status {
+      margin-top: 16px;
+      font-size: 0.92rem;
+      color: var(--text-secondary, #5c574f);
+      min-height: 1.2em;
     }
 
     .get-token-hint {
       margin-top: 20px;
       font-size: 0.92rem;
       color: var(--text-secondary, #5c574f);
-    }
-
-    .get-token-hint code {
-      background: rgba(0, 0, 0, 0.06);
-      padding: 2px 6px;
-      border-radius: 4px;
     }
   </style>
 </head>
@@ -141,10 +101,11 @@
     </div>
 
     <div class="get-token-card">
-      <h1>Get Google ID Token</h1>
+      <h1>Sign in with Google</h1>
       <p>
-        Sign in with Google below. Your ID token appears in the box.
-        Use <strong>Use in ConvertHub</strong> to save it and return home, or copy it for Postman.
+        Use Google Sign-In below. Your Google token is exchanged once with
+        <code>POST /auth/google</code> for an application JWT used on all API calls.
+        You can also sign in directly from the <a href="/">home page</a>.
       </p>
 
       <div id="g_id_onload"
@@ -154,45 +115,49 @@
       </div>
       <div class="g_id_signin" data-type="standard" data-theme="outline" data-size="large"></div>
 
-      <label for="token"><strong>Your Google ID token</strong></label>
-      <textarea id="token" readonly placeholder="Sign in to see the token here..."></textarea>
-
-      <div class="get-token-actions">
-        <button type="button" class="get-token-btn" onclick="useInConvertHub()">Use in ConvertHub</button>
-        <button type="button" class="get-token-btn secondary" onclick="copyToken()">Copy token</button>
-      </div>
+      <div class="get-token-status" id="status">Waiting for Google sign-in...</div>
 
       <div class="get-token-hint">
-        <p><strong>Postman / curl:</strong> <code>Authorization: Bearer &lt;token&gt;</code></p>
-        <p>Tokens expire in about an hour — come back here and sign in again when you get 401.</p>
+        <p><strong>Postman:</strong> sign in here, then copy the application JWT from browser DevTools → Application → Local Storage → <code>converthub_app_jwt</code>.</p>
+        <p>Use <code>Authorization: Bearer &lt;application_jwt&gt;</code> on protected APIs.</p>
       </div>
     </div>
   </div>
 
   <script>
-    const TOKEN_STORAGE_KEY = 'converthub_google_id_token';
+    const AUTH_API = 'http://localhost:8081/auth/google';
+    const APP_TOKEN_KEY = 'converthub_app_jwt';
+    const USER_KEY = 'converthub_user';
 
-    function handleCredential(response) {
-      document.getElementById('token').value = response.credential;
+    function setStatus(message) {
+      document.getElementById('status').textContent = message;
     }
 
-    function copyToken() {
-      const el = document.getElementById('token');
-      if (!el.value) {
-        alert('Sign in first to get a token.');
-        return;
-      }
-      navigator.clipboard.writeText(el.value).then(() => alert('Token copied!'));
-    }
+    async function handleCredential(response) {
+      setStatus('Verifying with backend...');
+      try {
+        const res = await fetch(AUTH_API, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken: response.credential })
+        });
 
-    function useInConvertHub() {
-      const token = document.getElementById('token').value.trim();
-      if (!token) {
-        alert('Sign in first to get a token.');
-        return;
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(errText || `HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        localStorage.setItem(APP_TOKEN_KEY, data.token);
+        localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+        localStorage.removeItem('converthub_google_id_token');
+
+        setStatus(`Signed in as ${data.user?.name || data.user?.email}. Redirecting...`);
+        window.location.href = '/';
+      } catch (err) {
+        console.error('Auth exchange failed:', err);
+        setStatus(`Sign-in failed: ${err.message}`);
       }
-      localStorage.setItem(TOKEN_STORAGE_KEY, token);
-      window.location.href = '/';
     }
   </script>
 </body>

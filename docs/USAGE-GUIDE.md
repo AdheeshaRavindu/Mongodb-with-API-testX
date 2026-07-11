@@ -2,7 +2,7 @@
 
 Step-by-step instructions for running, testing, and troubleshooting **ConvertHub** locally and on the live site.
 
-**Related docs:** [README](../README.md) (quick start) · [PROJECT.md](PROJECT.md) (technical reference)
+**Related docs:** [README](../README.md) (quick start) · [DOCKER-GUIDE](DOCKER-GUIDE.md) (Docker commands) · [PROJECT.md](PROJECT.md) (technical reference)
 
 ---
 
@@ -14,7 +14,7 @@ Step-by-step instructions for running, testing, and troubleshooting **ConvertHub
 4. [MongoDB Compass setup](#4-mongodb-compass-setup)
 5. [Test with Postman](#5-test-with-postman)
 6. [Test with curl](#6-test-with-curl)
-7. [Google OAuth 2.0 & RabbitMQ](#7-google-oauth-20--rabbitmq)
+7. [Authentication & RabbitMQ](#7-authentication--rabbitmq)
 8. [Live site vs local Docker](#8-live-site-vs-local-docker)
 9. [Troubleshooting (FAQ)](#9-troubleshooting-faq)
 10. [Quick reference](#10-quick-reference)
@@ -42,7 +42,7 @@ Step-by-step instructions for running, testing, and troubleshooting **ConvertHub
 | **8082** | Currency REST API | No — use Postman/curl |
 | **27017** | MongoDB for temperature | No — use Compass |
 | **27018** | MongoDB for currency | No — use Compass |
-| **5672** | RabbitMQ AMQP | No |
+| **56720** | RabbitMQ AMQP (host; Docker network uses 5672) | No |
 | **15672** | RabbitMQ management UI | Yes — guest/guest |
 
 > **Important:** Ports **8081** and **8082** are APIs only. Opening them in a browser shows JSON, not the converter UI. Always use **http://localhost:3000** for the web app.
@@ -64,13 +64,15 @@ Docker Compose reads [`.env`](../.env) from the project root. Create it **once**
 copy .env.example .env
 ```
 
-Edit `.env` and set your real Google Client ID:
+Edit `.env` and set your real Google Client ID and JWT secret:
 
 ```env
 GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
+JWT_SECRET=your-long-random-secret-at-least-32-characters
+JWT_EXPIRATION_HOURS=24
 ```
 
-> **Important:** If `.env` is missing, APIs use `YOUR_GOOGLE_CLIENT_ID` and every request returns **401**, even with a valid token.
+> **Important:** If `.env` is missing or uses placeholders, login (`POST /auth/google`) or protected APIs may return **401**.
 
 After changing `.env`, recreate the API containers (no full rebuild needed):
 
@@ -93,7 +95,7 @@ docker compose up -d
 RabbitMQ alone (without full compose):
 
 ```bash
-docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3.13-management
+docker run -d --name rabbitmq -p 56720:5672 -p 15672:15672 rabbitmq:3.13-management
 ```
 
 Check status:
@@ -116,7 +118,7 @@ docker compose down
 | `mongo-currency` | MongoDB | Stores `currency_db` on port **27018** |
 | `mongo-seed` | One-shot | Seeds demo data into `temp_db`, then exits |
 | `mongo-currency-seed` | One-shot | Seeds demo data into `currency_db`, then exits |
-| `rabbitmq` | RabbitMQ | Broker on **5672**, management UI on **15672** |
+| `rabbitmq` | RabbitMQ | Broker AMQP on host **56720** (container **5672**), management UI on **15672** |
 | `tempconv` | Spring Boot | Temperature API on port **8081** |
 | `currencyconvertor` | Spring Boot | Currency API on port **8082** |
 | `converthub-frontend` | nginx | Web UI on port **3000** |
@@ -134,10 +136,9 @@ Then open **http://localhost:3000**.
 ### Open the app
 
 1. Go to **http://localhost:3000**
-2. Click **Get token** in the auth bar (or open [http://localhost:3000/get-token.html](http://localhost:3000/get-token.html))
-3. Sign in with Google → click **Use in ConvertHub** (saves token and returns home)  
-   Or copy the token and paste it into the auth bar → **Save**
-4. Status should change to `Token set — Authorization: Bearer will be sent`
+2. Click **Sign in** in the auth bar (or open [http://localhost:3000/get-token.html](http://localhost:3000/get-token.html))
+3. Sign in with Google — the frontend exchanges your Google ID token with `POST /auth/google` and stores the **application JWT**
+4. Status should change to `Signed in as <your name>`
 5. Use Currency / Temperature converters as usual
 
 ### Currency converter
@@ -153,13 +154,14 @@ Then open **http://localhost:3000**.
 1. Click the **Temperature** tab
 2. Enter a value (e.g. `100`) and select a unit (Celsius, Fahrenheit, or Kelvin)
 3. Click **Convert**
-4. The frontend sends `Authorization: Bearer <token>` — set the token in the auth bar first
+4. The frontend sends `Authorization: Bearer <application_jwt>` — sign in first
 5. View results and history below
 
 ### Tips
 
 - Press **Enter** while focused on an input field to convert
-- If you see `401 Unauthorized`, paste a valid Google ID token and click **Save**, then hard refresh: **Ctrl+F5**
+- If you see `401 Unauthorized`, use the **Sign in with Google** button in the auth bar on the home page, then hard refresh: **Ctrl+F5**
+- Click **Logout** in the auth bar to clear the stored JWT
 - If the UI looks outdated after a code change, rebuild the frontend container (see [Troubleshooting](#9-troubleshooting-faq))
 
 ---
@@ -216,13 +218,13 @@ mongosh mongodb://localhost:27017/temp_db docs/mongo-seed-api-keys.js
 
 ## 5. Test with Postman
 
-Obtain a Google ID token first (see [section 7](#7-google-oauth-20--rabbitmq)). Token `aud` must match your `GOOGLE_CLIENT_ID`.
+Obtain an **application JWT** first (see [section 7](#7-authentication--rabbitmq)).
 
 All `/api/**` requests need:
 
 | Header | Value |
 |--------|-------|
-| `Authorization` | `Bearer YOUR_GOOGLE_ID_TOKEN` |
+| `Authorization` | `Bearer YOUR_APPLICATION_JWT` |
 
 ### Temperature API (port 8081)
 
@@ -234,7 +236,7 @@ Base URL: `http://localhost:8081/api/temperatures`
 |---------|-------|
 | **Method** | `POST` |
 | **URL** | `http://localhost:8081/api/temperatures/convert?value=100&unit=Celsius` |
-| **Headers** | `Authorization` = `Bearer YOUR_GOOGLE_ID_TOKEN` |
+| **Headers** | `Authorization` = `Bearer YOUR_APPLICATION_JWT` |
 
 #### POST convert — missing token (401)
 
@@ -274,7 +276,7 @@ Base URL: `http://localhost:8082/api/currency`
 |---------|-------|
 | **Method** | `POST` |
 | **URL** | `http://localhost:8082/api/currency/convert?usdAmount=100` |
-| **Headers** | `Authorization: Bearer YOUR_GOOGLE_ID_TOKEN` |
+| **Headers** | `Authorization: Bearer YOUR_APPLICATION_JWT` |
 
 #### GET history
 
@@ -282,14 +284,20 @@ Base URL: `http://localhost:8082/api/currency`
 |---------|-------|
 | **Method** | `GET` |
 | **URL** | `http://localhost:8082/api/currency/history` |
-| **Headers** | `Authorization: Bearer YOUR_GOOGLE_ID_TOKEN` |
+| **Headers** | `Authorization: Bearer YOUR_APPLICATION_JWT` |
 
 ---
 
 ## 6. Test with curl
 
 ```bash
-TOKEN="YOUR_GOOGLE_ID_TOKEN"
+# Step 1: Exchange Google ID token for application JWT
+curl -X POST "http://localhost:8081/auth/google" \
+  -H "Content-Type: application/json" \
+  -d '{"idToken":"YOUR_GOOGLE_ID_TOKEN"}'
+
+# Step 2: Use application JWT on protected APIs
+TOKEN="YOUR_APPLICATION_JWT"
 
 # Missing token → 401
 curl -X POST "http://localhost:8081/api/temperatures/convert?value=25&unit=celsius"
@@ -320,17 +328,14 @@ curl "http://localhost:8082/"
 
 ---
 
-## 7. Google OAuth 2.0 & RabbitMQ
+## 7. Authentication & RabbitMQ
 
-This project uses **Google as an OAuth 2.0 / OpenID Connect identity provider** in **resource-server** mode:
+ConvertHub uses a **two-step authentication** flow:
 
-- You sign in with Google and receive a long **ID token** (JWT, often starts with `eyJ…`).
-- Every `/api/**` call sends: `Authorization: Bearer <id_token>`.
-- Spring Security validates the token with Google’s public keys (issuer, signature, and Client ID / `aud`).
-- **Client Secret is not required** for this flow.
-- Do **not** store the ID token in MongoDB or in `.env` — only `GOOGLE_CLIENT_ID` belongs in config. Tokens expire in about **1 hour**.
+1. **Login (Google only):** The frontend uses Google Identity Services to obtain a Google ID token, then sends it once to `POST /auth/google` on the Temperature API (**8081**).
+2. **API access (application JWT):** The backend verifies the Google token, creates/updates the user in MongoDB, and returns an **application-issued JWT**. All `/api/**` calls use `Authorization: Bearer <application_jwt>`.
 
-Both Temperature (**8081**) and Currency (**8082**) use the **same** Bearer token.
+Google ID tokens are **not** sent to protected APIs. Both Temperature (**8081**) and Currency (**8082**) validate the **same** application JWT (shared `JWT_SECRET`).
 
 ### Google Cloud setup (Client ID)
 
@@ -344,52 +349,66 @@ Both Temperature (**8081**) and Currency (**8082**) use the **same** Bearer toke
 
 ```env
 GOOGLE_CLIENT_ID=xxxx.apps.googleusercontent.com
+JWT_SECRET=your-long-random-secret-at-least-32-characters
+JWT_EXPIRATION_HOURS=24
 ```
 
 Or set it in PowerShell before `docker compose up`:
 
 ```powershell
 $env:GOOGLE_CLIENT_ID="xxxx.apps.googleusercontent.com"
+$env:JWT_SECRET="your-long-random-secret"
 docker compose up --build
 ```
 
-Leave **Client Secret** unused for these APIs.
+Leave **Client Secret** unused for this flow.
 
-### How to get a Google ID token (step by step)
+### How to get an application JWT (step by step)
 
-1. Start the stack (`docker compose up -d`) and confirm `.env` has your real `GOOGLE_CLIENT_ID`.
-2. From the home page, click **Get token** in the auth bar — or open **http://localhost:3000/get-token.html** directly.
+1. Start the stack (`docker compose up -d`) and confirm `.env` has your real `GOOGLE_CLIENT_ID` and `JWT_SECRET`.
+2. From the home page, click **Sign in** — or open **http://localhost:3000/get-token.html** directly.
 3. Click **Sign in with Google**, choose your account, and allow access.
-4. Click **Use in ConvertHub** to save the token and go back home automatically.  
-   Or click **Copy token** for Postman/curl.
-5. Optional check: paste the token at [jwt.io](https://jwt.io). You should see:
-   - `iss` = `https://accounts.google.com`
-   - `aud` = your Client ID (must match `.env`)
+4. The frontend calls `POST http://localhost:8081/auth/google` with `{ "idToken": "..." }` and stores the returned application JWT.
+5. You are redirected to the home page. The auth bar shows your name and **Logout**.
 
-**Do not commit or share ID tokens publicly** — treat them like passwords until they expire.
+**For Postman:** After signing in on the home page, click the small **Copy API token** link in the auth bar. Or use DevTools → Application → Local Storage → `converthub_app_jwt`.
 
-### Use the token
+**Do not commit or share JWTs publicly** — treat them like passwords until they expire.
+
+### Use the application JWT
 
 #### ConvertHub UI
 
-1. Home → **Get token** → Sign in → **Use in ConvertHub**  
-   Or paste manually into the auth bar → **Save**
+1. Home → **Sign in** → complete Google sign-in
 2. Convert as usual on **http://localhost:3000**
+3. On **401**, you are redirected to sign in again
 
 #### Postman (important)
 
-Do **not** choose Auth Type **OAuth 2.0** (that asks for Auth URL / Client Secret and often fails with “Invalid protocol for auth URL”).
+Do **not** choose Auth Type **OAuth 2.0** (that asks for Auth URL / Client Secret and often fails with "Invalid protocol for auth URL").
 
-1. Create request, e.g. `POST http://localhost:8082/api/currency/convert?usdAmount=100`
-2. **Authorization** tab → Auth Type → **Bearer Token**
-3. Paste **only** the token into Token (Postman adds the `Bearer` prefix)
-4. Send — expect **200** JSON
-5. Same token works for `http://localhost:8081/api/temperatures/...`
+**Option A — sign in via browser (recommended):**
+
+1. Sign in on the home page (Google button in the auth bar)
+2. Click **Copy API token** in the auth bar (small link next to your name)
+3. In Postman: **Authorization** tab → Auth Type → **Bearer Token**
+4. Paste the **application JWT** (Postman adds the `Bearer` prefix)
+5. Send protected requests — expect **200** JSON
+
+**Option B — exchange manually:**
+
+1. `POST http://localhost:8081/auth/google` with body `{ "idToken": "<google_id_token>" }`
+2. Copy `token` from the JSON response
+3. Use as Bearer token on `http://localhost:8081/api/temperatures/...` and `http://localhost:8082/api/currency/...`
 
 #### curl (PowerShell)
 
 ```powershell
-$token = "PASTE_FULL_TOKEN_HERE"
+# Exchange Google ID token (from GIS sign-in) for application JWT
+$auth = Invoke-RestMethod -Method POST -Uri "http://localhost:8081/auth/google" `
+  -ContentType "application/json" `
+  -Body '{"idToken":"PASTE_GOOGLE_ID_TOKEN_HERE"}'
+$token = $auth.token
 
 curl.exe -X POST "http://localhost:8081/api/temperatures/convert?value=25&unit=celsius" `
   -H "Authorization: Bearer $token"
@@ -398,7 +417,7 @@ curl.exe -X POST "http://localhost:8082/api/currency/convert?usdAmount=100" `
   -H "Authorization: Bearer $token"
 ```
 
-When calls start returning **401**, the token expired — repeat the steps on `/get-token.html`.
+When calls start returning **401**, sign in again or exchange a fresh Google ID token.
 
 ### What RabbitMQ does in this project
 
@@ -420,7 +439,7 @@ History / safety-check GETs do **not** publish. MongoDB remains the source of tr
 | Setting | Value |
 |---------|-------|
 | Host | `localhost` (or `rabbitmq` in Docker Compose) |
-| AMQP port | `5672` |
+| AMQP port (host) | `56720` (container internal: `5672`) |
 | Management UI | http://localhost:15672 |
 | Username / password | `guest` / `guest` |
 | Exchange | `converthub.exchange` (topic) |
@@ -430,7 +449,7 @@ History / safety-check GETs do **not** publish. MongoDB remains the source of tr
 Standalone broker:
 
 ```bash
-docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3.13-management
+docker run -d --name rabbitmq -p 56720:5672 -p 15672:15672 rabbitmq:3.13-management
 ```
 
 ### How to check RabbitMQ
@@ -463,7 +482,7 @@ After a successful convert you should see lines like:
 docker compose ps rabbitmq
 ```
 
-Status should be **Up (healthy)**. Ports: **5672** (AMQP), **15672** (management UI).
+Status should be **Up (healthy)**. Ports: **56720** (AMQP on host), **15672** (management UI).
 
 ### Verify RabbitMQ after convert
 
@@ -484,7 +503,7 @@ It does **not** deploy:
 - Spring Boot services
 - MongoDB
 - RabbitMQ
-- Google OAuth resource-server validation on local APIs
+- Application JWT validation on local APIs (via shared `JWT_SECRET`)
 
 ### Where production APIs come from
 
@@ -495,7 +514,7 @@ When you visit **https://api.adheesha.dev**, the frontend calls **Cloudflare Wor
 | Currency | `https://currency-converter.vikumkodikara123.workers.dev/api/currency` |
 | Temperature | `https://temperature-converter.vikumkodikara123.workers.dev/api/temperatures` |
 
-When you visit **http://localhost:3000**, the frontend calls **localhost:8081** and **8082** instead (with Bearer token).
+When you visit **http://localhost:3000**, the frontend calls **localhost:8081** and **8082** instead (with application JWT Bearer token).
 
 ### Deploy frontend to Cloudflare
 
@@ -515,10 +534,11 @@ Live URLs after deploy:
 
 ### `401 Unauthorized` on `/api/**`
 
-**Check `.env` first:** APIs must not be using `YOUR_GOOGLE_CLIENT_ID`.
+**Check `.env` first:** APIs must have matching `JWT_SECRET` on both services, and tempconv must have a real `GOOGLE_CLIENT_ID` for login.
 
 ```powershell
-docker inspect tempconv --format "{{range .Config.Env}}{{println .}}{{end}}" | Select-String "GOOGLE"
+docker inspect tempconv --format "{{range .Config.Env}}{{println .}}{{end}}" | Select-String "GOOGLE|JWT"
+docker inspect currencyconvertor --format "{{range .Config.Env}}{{println .}}{{end}}" | Select-String "JWT"
 ```
 
 If wrong, fix `.env` then:
@@ -527,9 +547,9 @@ If wrong, fix `.env` then:
 docker compose up -d --force-recreate tempconv currencyconvertor
 ```
 
-**In Postman:** Use Auth Type **Bearer Token** (not OAuth 2.0). Get a fresh token from home → **Get token** or http://localhost:3000/get-token.html.
+**In Postman:** Use Auth Type **Bearer Token** with the **application JWT** (not the Google ID token). Sign in at http://localhost:3000/get-token.html and copy `converthub_app_jwt` from Local Storage, or call `POST /auth/google` manually.
 
-**In the web UI:** Click **Get token** → **Use in ConvertHub**, or paste in the auth bar → **Save**, then hard refresh (**Ctrl+F5**). Rebuild frontend if UI is stale:
+**In the web UI:** Click **Sign in**, complete Google sign-in, then hard refresh (**Ctrl+F5**) if needed. Rebuild frontend if UI is stale:
 
 ```bash
 docker compose build --no-cache frontend
@@ -538,7 +558,7 @@ docker compose up -d frontend
 
 ### Postman “Invalid protocol for auth URL” or OAuth errors
 
-You selected Auth Type **OAuth 2.0**. Switch to **Bearer Token** and paste the Google ID token from `/get-token.html`. You do not need Auth URL, Access Token URL, or Client Secret for these APIs.
+You selected Auth Type **OAuth 2.0**. Switch to **Bearer Token** and paste the **application JWT** from `converthub_app_jwt` (after signing in at `/get-token.html`) or from `POST /auth/google`. You do not need Auth URL, Access Token URL, or Client Secret for protected API calls.
 
 ### `ECONNREFUSED` on 8081 / 8082
 
@@ -590,7 +610,7 @@ docker compose logs rabbitmq
 docker compose logs mongo-temp
 ```
 
-Ensure ports 3000, 8081, 8082, 27017, 27018, 5672, and 15672 are not in use by other apps.
+Ensure ports 3000, 8081, 8082, 27017, 27018, 56720, and 15672 are not in use by other apps.
 
 ---
 
@@ -601,13 +621,14 @@ Ensure ports 3000, 8081, 8082, 27017, 27018, 5672, and 15672 are not in use by o
 | Service | Method | URL | Auth | Port |
 |---------|--------|-----|------|------|
 | Temperature | GET | `/` | None | 8081 |
-| Temperature | GET | `/api/temperatures/safety-check?value=&unit=` | Bearer | 8081 |
-| Temperature | GET | `/api/temperatures/history` | Bearer | 8081 |
-| Temperature | GET | `/api/temperatures/history/filter?unit=` | Bearer | 8081 |
-| Temperature | POST | `/api/temperatures/convert?value=&unit=` | Bearer | 8081 |
+| Temperature | POST | `/auth/google` | None (body: Google `idToken`) | 8081 |
+| Temperature | GET | `/api/temperatures/safety-check?value=&unit=` | Bearer (app JWT) | 8081 |
+| Temperature | GET | `/api/temperatures/history` | Bearer (app JWT) | 8081 |
+| Temperature | GET | `/api/temperatures/history/filter?unit=` | Bearer (app JWT) | 8081 |
+| Temperature | POST | `/api/temperatures/convert?value=&unit=` | Bearer (app JWT) | 8081 |
 | Currency | GET | `/` | None | 8082 |
-| Currency | POST | `/api/currency/convert?usdAmount=` | Bearer | 8082 |
-| Currency | GET | `/api/currency/history` | Bearer | 8082 |
+| Currency | POST | `/api/currency/convert?usdAmount=` | Bearer (app JWT) | 8082 |
+| Currency | GET | `/api/currency/history` | Bearer (app JWT) | 8082 |
 
 ### MongoDB locations
 
@@ -620,10 +641,11 @@ Ensure ports 3000, 8081, 8082, 27017, 27018, 5672, and 15672 are not in use by o
 
 | Variable | Example |
 |----------|---------|
-| `GOOGLE_CLIENT_ID` | `xxxx.apps.googleusercontent.com` |
-| `GOOGLE_CLIENT_SECRET` | *(not used by resource server)* |
+| `GOOGLE_CLIENT_ID` | `xxxx.apps.googleusercontent.com` (login on tempconv) |
+| `JWT_SECRET` | Long random secret (must match on both APIs) |
+| `JWT_EXPIRATION_HOURS` | `24` |
 | `RABBITMQ_HOST` | `localhost` or `rabbitmq` |
-| `RABBITMQ_PORT` | `5672` |
+| `RABBITMQ_PORT` | `5672` (inside Docker Compose; use `56720` from host) |
 | `RABBITMQ_USER` / `RABBITMQ_PASS` | `guest` / `guest` |
 
 ### Common commands
@@ -631,11 +653,12 @@ Ensure ports 3000, 8081, 8082, 27017, 27018, 5672, and 15672 are not in use by o
 ```bash
 # PowerShell
 $env:GOOGLE_CLIENT_ID="xxxx.apps.googleusercontent.com"
+$env:JWT_SECRET="your-long-random-secret"
 docker compose up --build          # Start stack
 docker compose down                # Stop stack
 docker compose ps                  # Check status
 docker compose logs -f tempconv    # View temperature API logs
-docker run -d --name rabbitmq -p 5672:5672 -p 15672:15672 rabbitmq:3.13-management
+docker run -d --name rabbitmq -p 56720:5672 -p 15672:15672 rabbitmq:3.13-management
 ```
 
 ---

@@ -11,7 +11,8 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=6">
+    <link rel="stylesheet" href="style.css?v=8">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 
 <body>
@@ -61,14 +62,36 @@
         </a>
     </nav>
 
-    <!-- Google OAuth token (local testing) -->
+    <!-- Auth bar -->
     <div class="auth-bar" id="auth-bar">
-        <a href="/get-token.html" class="auth-get-token-link auth-get-token-link--primary">Get token</a>
+        <div id="auth-signin-container" class="auth-signin-container">
+            <div id="g_id_onload"
+                 data-client_id="860796838827-g7bn0tq1cc50sndut1rukdl19t4tgm6h.apps.googleusercontent.com"
+                 data-callback="handleCredential"
+                 data-auto_prompt="false">
+            </div>
+            <div class="g_id_signin auth-gis-signin"
+                 data-type="standard"
+                 data-theme="outline"
+                 data-size="medium"
+                 data-text="signin_with"
+                 data-shape="pill">
+            </div>
+        </div>
         <a href="http://localhost:15672" target="_blank" rel="noopener noreferrer" class="auth-quick-link">RabbitMQ dashboard</a>
-        <label class="auth-label" for="google-id-token">Google ID Token</label>
-        <input type="password" id="google-id-token" class="auth-token-input" placeholder="Paste Bearer token for /api/** calls" autocomplete="off">
-        <button type="button" class="auth-save-btn" id="btn-save-token" onclick="saveGoogleIdToken()">Save</button>
-        <span class="auth-hint" id="auth-token-status">Not set — API calls will return 401</span>
+        <div class="auth-user" id="auth-user" hidden>
+            <img id="auth-user-picture" class="auth-user-picture" alt="" width="28" height="28">
+            <span id="auth-user-name" class="auth-user-name"></span>
+        </div>
+        <button type="button" class="auth-token-copy" id="btn-copy-token" onclick="copyAppToken()" hidden title="Copy JWT for Postman Bearer auth">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <rect x="9" y="9" width="13" height="13" rx="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            Copy API token
+        </button>
+        <button type="button" class="auth-save-btn" id="btn-logout" onclick="logout()" hidden>Logout</button>
+        <span class="auth-hint" id="auth-token-status">Not signed in — API calls will return 401</span>
     </div>
 
     <!-- Hero Section -->
@@ -317,7 +340,7 @@
         <span id="toast-msg"></span>
     </div>
 
-    <script src="app.js?v=5"></script>
+    <script src="app.js?v=8"></script>
 </body>
 
 </html>

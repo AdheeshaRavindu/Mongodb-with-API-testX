@@ -55,7 +55,7 @@ services:
     container_name: rabbitmq
     restart: unless-stopped
     ports:
-      - "5672:5672"
+      - "56720:5672"  # host 56720: Windows often reserves 5651-5750 (Hyper-V/WSL)
       - "15672:15672"
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
@@ -76,6 +76,8 @@ services:
       RABBITMQ_USER: guest
       RABBITMQ_PASS: guest
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-YOUR_GOOGLE_CLIENT_ID}
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-secret-key}
+      JWT_EXPIRATION_HOURS: ${JWT_EXPIRATION_HOURS:-24}
     ports:
       - "8081:8081"
     depends_on:
@@ -98,7 +100,8 @@ services:
       RABBITMQ_PORT: 5672
       RABBITMQ_USER: guest
       RABBITMQ_PASS: guest
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-YOUR_GOOGLE_CLIENT_ID}
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-secret-key}
+      JWT_EXPIRATION_HOURS: ${JWT_EXPIRATION_HOURS:-24}
     ports:
       - "8082:8082"
     depends_on:
