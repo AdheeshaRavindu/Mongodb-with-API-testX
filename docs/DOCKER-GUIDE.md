@@ -1,6 +1,6 @@
-﻿# ConvertHub â€” Docker Guide
+﻿# ConvertHub — Docker Guide
 
-Simple Docker commands for this project, ordered **most important â†’ least important**.
+Simple Docker commands for this project, ordered **most important → least important**.
 
 Run all commands from the project root:
 
@@ -8,7 +8,85 @@ Run all commands from the project root:
 D:\Github\Projects\Mongodb-with-API-testX
 ```
 
-**Related docs:** [README](../README.md) Â· [USAGE-GUIDE](USAGE-GUIDE.md)
+**Related docs:** [README](../README.md) · [USAGE-GUIDE](USAGE-GUIDE.md)
+
+## What's dockerized (full stack)
+
+When you run `docker compose up -d`, **9 containers** start:
+
+```text
+docker compose up -d
+        │
+        ├── converthub-frontend  (3000)  ← UI
+        ├── tempconv               (8081)  ← temp + auth
+        ├── currencyconvertor      (8082)  ← currency
+        ├── mongo-temp             (27017) ← DB + users
+        ├── mongo-currency         (27018) ← DB
+        ├── rabbitmq               (56720, 15672)
+        ├── mongo-seed             (runs once)
+        └── mongo-currency-seed    (runs once)
+```
+
+**Commands (run from project root):**
+
+| When | Command |
+|------|---------|
+| **Normal start** (no code changes) | `docker compose up -d` |
+| **Build + start** (after code changes) | `docker compose up --build -d` |
+| **Stop entire stack** | `docker compose down` |
+| **Stop MongoDB only** | `docker compose stop mongo-temp mongo-currency` |
+| **Start MongoDB again** | `docker compose start mongo-temp mongo-currency` |
+| **Stop Windows MongoDB service** (frees port 27017) | `net stop MongoDB` (Admin PowerShell) |
+
+```powershell
+# Normal start
+docker compose up -d
+
+# Build + start (first time or after code changes)
+docker compose up --build -d
+
+# Stop everything
+docker compose down
+
+# Stop MongoDB containers only (Docker)
+docker compose stop mongo-temp mongo-currency
+
+# Stop local Windows MongoDB service (if it blocks port 27017)
+# Run PowerShell as Administrator:
+net stop MongoDB
+
+# Start local Windows MongoDB again (optional)
+net start MongoDB
+```
+
+### Your app (built from your code)
+
+| Container | What it is | Port |
+|-----------|------------|------|
+| `converthub-frontend` | Web UI (nginx) | **3000** |
+| `tempconv` | Temperature API + auth (`POST /auth/google`) | **8081** |
+| `currencyconvertor` | Currency API | **8082** |
+
+### Supporting services
+
+| Container | What it is | Port |
+|-----------|------------|------|
+| `mongo-temp` | MongoDB (temperature + users) | **27017** |
+| `mongo-currency` | MongoDB (currency history) | **27018** |
+| `rabbitmq` | Message broker | **56720** (AMQP), **15672** (dashboard) |
+
+### One-shot jobs (exit after done — normal)
+
+| Container | Role |
+|-----------|------|
+| `mongo-seed` | Seeds `temp_db` |
+| `mongo-currency-seed` | Seeds `currency_db` |
+
+### Not separate containers
+
+- **Auth logic** → inside `tempconv`
+- **Google Sign-In** → browser (Google)
+- **JWT after login** → browser localStorage
 
 ---
 
