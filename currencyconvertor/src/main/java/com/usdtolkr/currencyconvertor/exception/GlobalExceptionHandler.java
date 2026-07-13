@@ -13,4 +13,16 @@ public class GlobalExceptionHandler {
     public String handleUnauthorizedApiKey(UnauthorizedApiKeyException ex) {
         return ex.getMessage();
     }
+
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    @ExceptionHandler(IllegalArgumentException.class)
+    public String handleIllegalArgument(IllegalArgumentException ex) {
+        return ex.getMessage();
+    }
+
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public String handleNotFound(ResourceNotFoundException ex) {
+        return ex.getMessage();
+    }
 }

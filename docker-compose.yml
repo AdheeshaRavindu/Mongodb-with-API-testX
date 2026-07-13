@@ -75,11 +75,11 @@ services:
       RABBITMQ_PORT: 5672
       RABBITMQ_USER: guest
       RABBITMQ_PASS: guest
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-YOUR_GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-860796838827-g7bn0tq1cc50sndut1rukdl19t4tgm6h.apps.googleusercontent.com}
       JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-secret-key}
       JWT_EXPIRATION_HOURS: ${JWT_EXPIRATION_HOURS:-24}
-    ports:
-      - "8081:8081"
+    expose:
+      - "8081"
     depends_on:
       mongo-temp:
         condition: service_healthy
@@ -102,8 +102,8 @@ services:
       RABBITMQ_PASS: guest
       JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-secret-key}
       JWT_EXPIRATION_HOURS: ${JWT_EXPIRATION_HOURS:-24}
-    ports:
-      - "8082:8082"
+    expose:
+      - "8082"
     depends_on:
       mongo-currency:
         condition: service_healthy
@@ -111,6 +111,42 @@ services:
         condition: service_completed_successfully
       rabbitmq:
         condition: service_healthy
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+    container_name: api-gateway
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 8080
+      JWT_SECRET: ${JWT_SECRET:-change-me-to-a-long-random-secret-key}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      TEMP_SERVICE_HOST: tempconv
+      TEMP_SERVICE_PORT: 8081
+      CURRENCY_SERVICE_HOST: currencyconvertor
+      CURRENCY_SERVICE_PORT: 8082
+      RATE_LIMIT_REPLENISH: 10
+      RATE_LIMIT_BURST: 20
+    ports:
+      - "8080:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+      tempconv:
+        condition: service_started
+      currencyconvertor:
+        condition: service_started
 
   frontend:
     build:
@@ -120,6 +156,7 @@ services:
     ports:
       - "3000:80"
     depends_on:
+      - api-gateway
       - tempconv
       - currencyconvertor
 

@@ -38,14 +38,13 @@ Step-by-step instructions for running, testing, and troubleshooting **ConvertHub
 | Port | What it is | Open in browser? |
 |------|------------|------------------|
 | **3000** | Web UI (frontend) | **Yes — start here** |
-| **8081** | Temperature REST API | No — use Postman/curl |
-| **8082** | Currency REST API | No — use Postman/curl |
+| **8080** | API Gateway (all API calls) | No — use Postman/curl |
 | **27017** | MongoDB for temperature | No — use Compass |
 | **27018** | MongoDB for currency | No — use Compass |
 | **56720** | RabbitMQ AMQP (host; Docker network uses 5672) | No |
 | **15672** | RabbitMQ management UI | Yes — guest/guest |
 
-> **Important:** Ports **8081** and **8082** are APIs only. Opening them in a browser shows JSON, not the converter UI. Always use **http://localhost:3000** for the web app.
+> **Important:** Use **http://localhost:8080** for all API calls (Postman, curl). Backend services on 8081/8082 are internal to Docker only. Open **http://localhost:3000** for the web UI.
 
 ### Live demo (no Docker needed)
 
@@ -77,7 +76,7 @@ JWT_EXPIRATION_HOURS=24
 After changing `.env`, recreate the API containers (no full rebuild needed):
 
 ```powershell
-docker compose up -d --force-recreate tempconv currencyconvertor
+docker compose up -d --force-recreate tempconv currencyconvertor api-gateway
 ```
 
 ### Commands
@@ -119,8 +118,10 @@ docker compose down
 | `mongo-seed` | One-shot | Seeds demo data into `temp_db`, then exits |
 | `mongo-currency-seed` | One-shot | Seeds demo data into `currency_db`, then exits |
 | `rabbitmq` | RabbitMQ | Broker AMQP on host **56720** (container **5672**), management UI on **15672** |
-| `tempconv` | Spring Boot | Temperature API on port **8081** |
-| `currencyconvertor` | Spring Boot | Currency API on port **8082** |
+| `api-gateway` | Spring Cloud Gateway | API entry point on port **8080** |
+| `tempconv` | Spring Boot | Temperature API (internal **8081**) |
+| `currencyconvertor` | Spring Boot | Currency API (internal **8082**) |
+| `redis` | Redis | Gateway rate limiting (internal **6379**) |
 | `converthub-frontend` | nginx | Web UI on port **3000** |
 
 ### Verify before testing
@@ -226,16 +227,31 @@ All `/api/**` requests need:
 |--------|-------|
 | `Authorization` | `Bearer YOUR_APPLICATION_JWT` |
 
-### Temperature API (port 8081)
+### API Gateway (port 8080)
 
-Base URL: `http://localhost:8081/api/temperatures`
+Base URL: `http://localhost:8080`
+
+All client requests go through the gateway:
+
+| Path | Routed to |
+|------|-----------|
+| `POST /auth/google` | tempconv (public) |
+| `GET /auth/me` | tempconv (JWT) |
+| `/api/temperatures/**` | tempconv (JWT + rate limit) |
+| `/api/currency/**` | currencyconvertor (JWT + rate limit) |
+
+Rate limit: **10 requests/second** per IP (burst 20). Exceeding returns **429 Too Many Requests**.
+
+### Temperature API (via gateway)
+
+Base URL: `http://localhost:8080/api/temperatures`
 
 #### POST convert — success (200)
 
 | Setting | Value |
 |---------|-------|
 | **Method** | `POST` |
-| **URL** | `http://localhost:8081/api/temperatures/convert?value=100&unit=Celsius` |
+| **URL** | `http://localhost:8080/api/temperatures/convert?value=100&unit=Celsius` |
 | **Headers** | `Authorization` = `Bearer YOUR_APPLICATION_JWT` |
 
 #### POST convert — missing token (401)
@@ -253,7 +269,7 @@ Expected: HTTP **401 Unauthorized**.
 | Setting | Value |
 |---------|-------|
 | **Method** | `GET` |
-| **URL** | `http://localhost:8081/api/temperatures/safety-check?value=102&unit=F` |
+| **URL** | `http://localhost:8080/api/temperatures/safety-check?value=102&unit=F` |
 | **Headers** | `Authorization: Bearer …` |
 
 #### GET history / filter — Bearer required
@@ -261,21 +277,21 @@ Expected: HTTP **401 Unauthorized**.
 | Setting | Value |
 |---------|-------|
 | **Method** | `GET` |
-| **URL** | `http://localhost:8081/api/temperatures/history` or `.../history/filter?unit=celsius` |
+| **URL** | `http://localhost:8080/api/temperatures/history` or `.../history/filter?unit=celsius` |
 | **Headers** | `Authorization: Bearer …` |
 
 ---
 
-### Currency API (port 8082)
+### Currency API (via gateway)
 
-Base URL: `http://localhost:8082/api/currency`
+Base URL: `http://localhost:8080/api/currency`
 
 #### POST convert (200)
 
 | Setting | Value |
 |---------|-------|
 | **Method** | `POST` |
-| **URL** | `http://localhost:8082/api/currency/convert?usdAmount=100` |
+| **URL** | `http://localhost:8080/api/currency/convert?usdAmount=100` |
 | **Headers** | `Authorization: Bearer YOUR_APPLICATION_JWT` |
 
 #### GET history
@@ -283,7 +299,7 @@ Base URL: `http://localhost:8082/api/currency`
 | Setting | Value |
 |---------|-------|
 | **Method** | `GET` |
-| **URL** | `http://localhost:8082/api/currency/history` |
+| **URL** | `http://localhost:8080/api/currency/history` |
 | **Headers** | `Authorization: Bearer YOUR_APPLICATION_JWT` |
 
 ---
@@ -292,7 +308,7 @@ Base URL: `http://localhost:8082/api/currency`
 
 ```bash
 # Step 1: Exchange Google ID token for application JWT
-curl -X POST "http://localhost:8081/auth/google" \
+curl -X POST "http://localhost:8080/auth/google" \
   -H "Content-Type: application/json" \
   -d '{"idToken":"YOUR_GOOGLE_ID_TOKEN"}'
 
@@ -300,30 +316,30 @@ curl -X POST "http://localhost:8081/auth/google" \
 TOKEN="YOUR_APPLICATION_JWT"
 
 # Missing token → 401
-curl -X POST "http://localhost:8081/api/temperatures/convert?value=25&unit=celsius"
+curl -X POST "http://localhost:8080/api/temperatures/convert?value=25&unit=celsius"
 
 # Temperature convert → 200
-curl -X POST "http://localhost:8081/api/temperatures/convert?value=25&unit=celsius" \
+curl -X POST "http://localhost:8080/api/temperatures/convert?value=25&unit=celsius" \
   -H "Authorization: Bearer $TOKEN"
 
 # Safety check
-curl "http://localhost:8081/api/temperatures/safety-check?value=102&unit=F" \
+curl "http://localhost:8080/api/temperatures/safety-check?value=102&unit=F" \
   -H "Authorization: Bearer $TOKEN"
 
 # History filter
-curl "http://localhost:8081/api/temperatures/history/filter?unit=celsius" \
+curl "http://localhost:8080/api/temperatures/history/filter?unit=celsius" \
   -H "Authorization: Bearer $TOKEN"
 
 # Currency convert → 200 (also publishes RabbitMQ event)
-curl -X POST "http://localhost:8082/api/currency/convert?usdAmount=100" \
+curl -X POST "http://localhost:8080/api/currency/convert?usdAmount=100" \
   -H "Authorization: Bearer $TOKEN"
 
-curl "http://localhost:8082/api/currency/history" \
+curl "http://localhost:8080/api/currency/history" \
   -H "Authorization: Bearer $TOKEN"
 
 # Public home (no auth)
-curl "http://localhost:8081/"
-curl "http://localhost:8082/"
+curl "http://localhost:8080/"
+curl "http://localhost:8080/"
 ```
 
 ---
@@ -332,10 +348,10 @@ curl "http://localhost:8082/"
 
 ConvertHub uses a **two-step authentication** flow:
 
-1. **Login (Google only):** The frontend uses Google Identity Services to obtain a Google ID token, then sends it once to `POST /auth/google` on the Temperature API (**8081**).
+1. **Login (Google only):** The frontend uses Google Identity Services to obtain a Google ID token, then sends it once to `POST /auth/google` on the **API Gateway (8080)**.
 2. **API access (application JWT):** The backend verifies the Google token, creates/updates the user in MongoDB, and returns an **application-issued JWT**. All `/api/**` calls use `Authorization: Bearer <application_jwt>`.
 
-Google ID tokens are **not** sent to protected APIs. Both Temperature (**8081**) and Currency (**8082**) validate the **same** application JWT (shared `JWT_SECRET`).
+Google ID tokens are **not** sent to protected APIs. The gateway and both backend services validate the **same** application JWT (shared `JWT_SECRET`).
 
 ### Google Cloud setup (Client ID)
 
@@ -368,7 +384,7 @@ Leave **Client Secret** unused for this flow.
 1. Start the stack (`docker compose up -d`) and confirm `.env` has your real `GOOGLE_CLIENT_ID` and `JWT_SECRET`.
 2. From the home page, click **Sign in** — or open **http://localhost:3000/get-token.html** directly.
 3. Click **Sign in with Google**, choose your account, and allow access.
-4. The frontend calls `POST http://localhost:8081/auth/google` with `{ "idToken": "..." }` and stores the returned application JWT.
+4. The frontend calls `POST http://localhost:8080/auth/google` with `{ "idToken": "..." }` and stores the returned application JWT.
 5. You are redirected to the home page. The auth bar shows your name and **Logout**.
 
 **For Postman:** After signing in on the home page, click the small **Copy API token** link in the auth bar. Or use DevTools → Application → Local Storage → `converthub_app_jwt`.
@@ -397,23 +413,23 @@ Do **not** choose Auth Type **OAuth 2.0** (that asks for Auth URL / Client Secre
 
 **Option B — exchange manually:**
 
-1. `POST http://localhost:8081/auth/google` with body `{ "idToken": "<google_id_token>" }`
+1. `POST http://localhost:8080/auth/google` with body `{ "idToken": "<google_id_token>" }`
 2. Copy `token` from the JSON response
-3. Use as Bearer token on `http://localhost:8081/api/temperatures/...` and `http://localhost:8082/api/currency/...`
+3. Use as Bearer token on `http://localhost:8080/api/temperatures/...` and `http://localhost:8080/api/currency/...`
 
 #### curl (PowerShell)
 
 ```powershell
 # Exchange Google ID token (from GIS sign-in) for application JWT
-$auth = Invoke-RestMethod -Method POST -Uri "http://localhost:8081/auth/google" `
+$auth = Invoke-RestMethod -Method POST -Uri "http://localhost:8080/auth/google" `
   -ContentType "application/json" `
   -Body '{"idToken":"PASTE_GOOGLE_ID_TOKEN_HERE"}'
 $token = $auth.token
 
-curl.exe -X POST "http://localhost:8081/api/temperatures/convert?value=25&unit=celsius" `
+curl.exe -X POST "http://localhost:8080/api/temperatures/convert?value=25&unit=celsius" `
   -H "Authorization: Bearer $token"
 
-curl.exe -X POST "http://localhost:8082/api/currency/convert?usdAmount=100" `
+curl.exe -X POST "http://localhost:8080/api/currency/convert?usdAmount=100" `
   -H "Authorization: Bearer $token"
 ```
 
@@ -514,7 +530,7 @@ When you visit **https://api.adheesha.dev**, the frontend calls **Cloudflare Wor
 | Currency | `https://currency-converter.vikumkodikara123.workers.dev/api/currency` |
 | Temperature | `https://temperature-converter.vikumkodikara123.workers.dev/api/temperatures` |
 
-When you visit **http://localhost:3000**, the frontend calls **localhost:8081** and **8082** instead (with application JWT Bearer token).
+When you visit **http://localhost:3000**, the frontend calls **localhost:8080** (API Gateway) with the application JWT Bearer token.
 
 ### Deploy frontend to Cloudflare
 
@@ -544,7 +560,7 @@ docker inspect currencyconvertor --format "{{range .Config.Env}}{{println .}}{{e
 If wrong, fix `.env` then:
 
 ```powershell
-docker compose up -d --force-recreate tempconv currencyconvertor
+docker compose up -d --force-recreate tempconv currencyconvertor api-gateway
 ```
 
 **In Postman:** Use Auth Type **Bearer Token** with the **application JWT** (not the Google ID token). Sign in at http://localhost:3000/get-token.html and copy `converthub_app_jwt` from Local Storage, or call `POST /auth/google` manually.
@@ -560,18 +576,23 @@ docker compose up -d frontend
 
 You selected Auth Type **OAuth 2.0**. Switch to **Bearer Token** and paste the **application JWT** from `converthub_app_jwt` (after signing in at `/get-token.html`) or from `POST /auth/google`. You do not need Auth URL, Access Token URL, or Client Secret for protected API calls.
 
-### `ECONNREFUSED` on 8081 / 8082
+### `ECONNREFUSED` on 8080
 
-APIs are not running. From the project root:
+The API Gateway is not running. From the project root:
 
 ```bash
 docker compose ps
-docker compose logs tempconv
-docker compose logs currencyconvertor
+docker compose logs api-gateway
 docker compose up --build -d
 ```
 
-Both services should show **Up**, not **Restarting**.
+### `429 Too Many Requests`
+
+You exceeded the gateway rate limit (10 req/s per IP). Wait a moment and retry.
+
+### `ECONNREFUSED` on internal APIs
+
+Backend APIs (8081/8082) are no longer exposed on the host — use **http://localhost:8080** instead.
 
 ---
 
@@ -587,9 +608,9 @@ Refresh Compass on `localhost:27017`.
 
 ---
 
-### 404 or JSON when opening 8081/8082 in browser
+### 404 or JSON when opening 8080 in browser
 
-Those ports are REST APIs, not the UI. Use **http://localhost:3000**.
+Port **8080** is the API Gateway — `GET /` returns gateway info JSON. Use **http://localhost:3000** for the web UI.
 
 Root `/` on each API returns JSON service info — that is normal (and does not require auth).
 
@@ -610,7 +631,7 @@ docker compose logs rabbitmq
 docker compose logs mongo-temp
 ```
 
-Ensure ports 3000, 8081, 8082, 27017, 27018, 56720, and 15672 are not in use by other apps.
+Ensure ports 3000, 8080, 27017, 27018, 56720, and 15672 are not in use by other apps.
 
 ---
 
@@ -620,15 +641,15 @@ Ensure ports 3000, 8081, 8082, 27017, 27018, 56720, and 15672 are not in use by 
 
 | Service | Method | URL | Auth | Port |
 |---------|--------|-----|------|------|
-| Temperature | GET | `/` | None | 8081 |
-| Temperature | POST | `/auth/google` | None (body: Google `idToken`) | 8081 |
-| Temperature | GET | `/api/temperatures/safety-check?value=&unit=` | Bearer (app JWT) | 8081 |
-| Temperature | GET | `/api/temperatures/history` | Bearer (app JWT) | 8081 |
-| Temperature | GET | `/api/temperatures/history/filter?unit=` | Bearer (app JWT) | 8081 |
-| Temperature | POST | `/api/temperatures/convert?value=&unit=` | Bearer (app JWT) | 8081 |
-| Currency | GET | `/` | None | 8082 |
-| Currency | POST | `/api/currency/convert?usdAmount=` | Bearer (app JWT) | 8082 |
-| Currency | GET | `/api/currency/history` | Bearer (app JWT) | 8082 |
+| Gateway | GET | `/` | None | 8080 |
+| Gateway | POST | `/auth/google` | None (body: Google `idToken`) | 8080 |
+| Gateway | GET | `/auth/me` | Bearer (app JWT) | 8080 |
+| Temperature | GET | `/api/temperatures/safety-check?value=&unit=` | Bearer (app JWT) | 8080 |
+| Temperature | GET | `/api/temperatures/history` | Bearer (app JWT) | 8080 |
+| Temperature | GET | `/api/temperatures/history/filter?unit=` | Bearer (app JWT) | 8080 |
+| Temperature | POST | `/api/temperatures/convert?value=&unit=` | Bearer (app JWT) | 8080 |
+| Currency | POST | `/api/currency/convert?usdAmount=` | Bearer (app JWT) | 8080 |
+| Currency | GET | `/api/currency/history` | Bearer (app JWT) | 8080 |
 
 ### MongoDB locations
 

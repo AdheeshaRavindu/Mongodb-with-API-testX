@@ -11,7 +11,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=8">
+    <link rel="stylesheet" href="style.css?v=9">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 
@@ -92,6 +92,7 @@
         </button>
         <button type="button" class="auth-save-btn" id="btn-logout" onclick="logout()" hidden>Logout</button>
         <span class="auth-hint" id="auth-token-status">Not signed in — API calls will return 401</span>
+        <span class="auth-user-email" id="auth-user-email" hidden></span>
     </div>
 
     <!-- Hero Section -->
@@ -99,7 +100,6 @@
         <h1 class="hero-title">
             <span class="gradient-text">Convert</span> with clarity,<br><span class="hero-title-accent">in one place.</span>
         </h1>
-        <p class="hero-subtitle">Track exchange rates and temperature conversions in one clean workspace. USD to LKR rates, Celsius/Fahrenheit/Kelvin calculations, and recent history are all surfaced with clear hierarchy.</p>
         <ul class="hero-features" aria-label="Highlights">
             <li><span class="feature-dot currency-dot"></span> Currency history</li>
             <li><span class="feature-dot temp-dot"></span> Temperature logs</li>
@@ -134,10 +134,34 @@
                     <div class="api-badge">Currency API</div>
                 </div>
 
+                <div class="stats-strip" id="currency-stats-strip" aria-label="Currency statistics">
+                    <div class="stat-card">
+                        <span class="stat-label">Live rate</span>
+                        <span class="stat-value" id="currency-live-rate">—</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Conversions</span>
+                        <span class="stat-value" id="currency-stat-count">—</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Total USD</span>
+                        <span class="stat-value" id="currency-stat-usd">—</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Total LKR</span>
+                        <span class="stat-value" id="currency-stat-lkr">—</span>
+                    </div>
+                </div>
+
+                <div class="direction-toggle" role="group" aria-label="Conversion direction">
+                    <button type="button" id="currency-dir-usd-lkr" class="dir-btn active" onclick="setCurrencyDirection('usd-lkr')">USD → LKR</button>
+                    <button type="button" id="currency-dir-lkr-usd" class="dir-btn" onclick="setCurrencyDirection('lkr-usd')">LKR → USD</button>
+                </div>
+
                 <div class="input-group">
-                    <label class="input-label" for="currency-input">Enter USD Amount</label>
+                    <label class="input-label" for="currency-input" id="currency-input-label">Enter USD Amount</label>
                     <div class="input-wrapper">
-                        <span class="input-prefix">$</span>
+                        <span class="input-prefix" id="currency-input-prefix">$</span>
                         <input type="number" id="currency-input" class="input-field" placeholder="100.00" step="0.01"
                             min="0">
                         <button class="convert-btn" id="btn-convert-currency" onclick="convertCurrency()">
@@ -179,7 +203,16 @@
             <div class="history-card">
                 <div class="history-header">
                     <h3>Conversion History</h3>
-                    <button class="refresh-btn" onclick="loadCurrencyHistory()">
+                    <div class="history-actions">
+                        <label class="history-filter-label" for="currency-history-scope">
+                            View
+                            <select id="currency-history-scope" class="history-filter-select" onchange="resetCurrencyHistoryPage(); loadCurrencyHistory();">
+                                <option value="all">All</option>
+                                <option value="mine">Mine</option>
+                            </select>
+                        </label>
+                        <span class="history-count" id="currency-history-count"></span>
+                        <button class="refresh-btn" onclick="loadCurrencyHistory()">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2">
                             <path d="M1 4v6h6" />
@@ -187,21 +220,28 @@
                         </svg>
                         Refresh
                     </button>
+                    </div>
+                </div>
+                <div class="history-pagination" id="currency-pagination">
+                    <button type="button" class="page-btn" id="currency-prev" onclick="changeCurrencyPage(-1)">Prev</button>
+                    <span class="page-info" id="currency-page-info">Page 1</span>
+                    <button type="button" class="page-btn" id="currency-next" onclick="changeCurrencyPage(1)">Next</button>
                 </div>
                 <div class="history-table-wrapper">
                     <table class="history-table" id="currency-history-table">
                         <thead>
                             <tr>
                                 <th>#</th>
-                                <th>Input (USD)</th>
-                                <th>Output (LKR)</th>
+                                <th>Input</th>
+                                <th>Output</th>
                                 <th>Rate</th>
                                 <th>Timestamp</th>
+                                <th></th>
                             </tr>
                         </thead>
                         <tbody id="currency-history-body">
                             <tr class="empty-row">
-                                <td colspan="5">No conversion history yet</td>
+                                <td colspan="6">No conversion history yet</td>
                             </tr>
                         </tbody>
                     </table>
@@ -224,6 +264,25 @@
                         <p class="card-desc">Celsius • Fahrenheit • Kelvin</p>
                     </div>
                     <div class="api-badge temp-badge">Temperature API</div>
+                </div>
+
+                <div class="stats-strip temp-stats-strip" id="temp-stats-strip" aria-label="Temperature statistics">
+                    <div class="stat-card">
+                        <span class="stat-label">Conversions</span>
+                        <span class="stat-value" id="temp-stat-count">—</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Celsius</span>
+                        <span class="stat-value" id="temp-stat-celsius">—</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Fahrenheit</span>
+                        <span class="stat-value" id="temp-stat-fahrenheit">—</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Kelvin</span>
+                        <span class="stat-value" id="temp-stat-kelvin">—</span>
+                    </div>
                 </div>
 
                 <div class="input-group">
@@ -279,15 +338,20 @@
                 <div class="history-header">
                     <h3>Conversion History</h3>
                     <div class="history-actions">
-                        <label class="history-filter-label" for="temp-history-filter">
-                            Filter
-                            <select id="temp-history-filter" class="history-filter-select" onchange="loadTempHistory()">
+                        <label class="history-filter-label" for="temp-history-scope">
+                            View
+                            <select id="temp-history-scope" class="history-filter-select" onchange="resetTempHistoryPage(); loadTempHistory();">
                                 <option value="all">All</option>
-                                <option value="celsius">Celsius</option>
-                                <option value="fahrenheit">Fahrenheit</option>
-                                <option value="kelvin">Kelvin</option>
+                                <option value="mine">Mine</option>
                             </select>
                         </label>
+                        <label class="history-filter-label" for="temp-history-filter">
+                            Unit
+                            <select id="temp-history-filter" class="history-filter-select" onchange="resetTempHistoryPage(); loadTempHistory();">
+                                <option value="all">All</option>
+                            </select>
+                        </label>
+                        <span class="history-count" id="temp-history-count"></span>
                         <button class="refresh-btn temp-refresh" onclick="loadTempHistory()">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2">
@@ -298,6 +362,11 @@
                     </button>
                     </div>
                 </div>
+                <div class="history-pagination" id="temp-pagination">
+                    <button type="button" class="page-btn" id="temp-prev" onclick="changeTempPage(-1)">Prev</button>
+                    <span class="page-info" id="temp-page-info">Page 1</span>
+                    <button type="button" class="page-btn" id="temp-next" onclick="changeTempPage(1)">Next</button>
+                </div>
                 <div class="history-table-wrapper">
                     <table class="history-table" id="temp-history-table">
                         <thead>
@@ -307,11 +376,12 @@
                                 <th>Output</th>
                                 <th>From → To</th>
                                 <th>Timestamp</th>
+                                <th></th>
                             </tr>
                         </thead>
                         <tbody id="temp-history-body">
                             <tr class="empty-row">
-                                <td colspan="5">No conversion history yet</td>
+                                <td colspan="6">No conversion history yet</td>
                             </tr>
                         </tbody>
                     </table>
@@ -340,7 +410,7 @@
         <span id="toast-msg"></span>
     </div>
 
-    <script src="app.js?v=8"></script>
+    <script src="app.js?v=11"></script>
 </body>
 
 </html>

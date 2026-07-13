@@ -2,20 +2,30 @@
    ConvertHub — Application Logic
    =================================================== */
 
-// API Endpoints
+// API Endpoints — same-origin via nginx proxy (Docker) or direct gateway (local dev)
 const isLocalRuntime = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-const AUTH_API = isLocalRuntime
-    ? 'http://localhost:8081/auth/google'
-    : 'https://temperature-converter.vikumkodikara123.workers.dev/auth/google';
-const CURRENCY_API = isLocalRuntime
-    ? 'http://localhost:8082/api/currency'
+const useSameOriginProxy = window.location.port === '3000' || window.location.port === '80';
+const API_BASE = useSameOriginProxy
+    ? ''
+    : isLocalRuntime
+        ? 'http://localhost:8080'
+        : 'https://temperature-converter.vikumkodikara123.workers.dev';
+const AUTH_API = `${API_BASE}/auth/google`;
+const AUTH_ME_API = `${API_BASE}/auth/me`;
+const CURRENCY_API = useSameOriginProxy || isLocalRuntime
+    ? `${API_BASE}/api/currency`
     : 'https://currency-converter.vikumkodikara123.workers.dev/api/currency';
-const TEMP_API = isLocalRuntime
-    ? 'http://localhost:8081/api/temperatures'
+const TEMP_API = useSameOriginProxy || isLocalRuntime
+    ? `${API_BASE}/api/temperatures`
     : 'https://temperature-converter.vikumkodikara123.workers.dev/api/temperatures';
 
 const APP_TOKEN_KEY = 'converthub_app_jwt';
 const USER_KEY = 'converthub_user';
+const HISTORY_PAGE_SIZE = 8;
+
+let currencyDirection = 'usd-lkr';
+let currencyHistoryState = { scope: 'all', page: 0 };
+let tempHistoryState = { scope: 'all', page: 0 };
 
 function getAppToken() {
     return localStorage.getItem(APP_TOKEN_KEY) || '';
@@ -86,6 +96,7 @@ function updateAuthBarUI() {
     const signInContainer = document.getElementById('auth-signin-container');
     const userBox = document.getElementById('auth-user');
     const userName = document.getElementById('auth-user-name');
+    const userEmail = document.getElementById('auth-user-email');
     const userPicture = document.getElementById('auth-user-picture');
     const logoutBtn = document.getElementById('btn-logout');
     const copyTokenBtn = document.getElementById('btn-copy-token');
@@ -102,6 +113,15 @@ function updateAuthBarUI() {
     if (logoutBtn) logoutBtn.hidden = !isLoggedIn;
     if (copyTokenBtn) copyTokenBtn.hidden = !isLoggedIn;
     if (userBox) userBox.hidden = !isLoggedIn;
+
+    if (userEmail) {
+        if (isLoggedIn && user?.email) {
+            userEmail.textContent = user.email;
+            userEmail.hidden = false;
+        } else {
+            userEmail.hidden = true;
+        }
+    }
 
     if (isLoggedIn && user) {
         if (userName) userName.textContent = user.name || user.email || 'Signed in';
@@ -132,13 +152,31 @@ function requireAuthOrToast() {
     return true;
 }
 
+async function refreshCurrentUser() {
+    if (!getAppToken()) return;
+
+    try {
+        const res = await authFetch(AUTH_ME_API);
+        if (!res.ok) return;
+        const user = await res.json();
+        localStorage.setItem(USER_KEY, JSON.stringify(user));
+        updateAuthBarUI();
+    } catch (err) {
+        if (err.message !== 'Unauthorized') {
+            console.warn('Could not refresh user profile:', err);
+        }
+    }
+}
+
 async function handleCredential(response) {
     try {
         const data = await exchangeGoogleToken(response.credential);
         localStorage.removeItem('converthub_google_id_token');
         saveAuthSession(data.token, data.user);
+        await refreshCurrentUser();
         const displayName = data.user?.name || data.user?.email || 'user';
         showToast(`Signed in as ${displayName}`, 'success');
+        loadCurrencyRateAndStats();
         loadCurrencyHistory();
     } catch (err) {
         console.error('Auth exchange failed:', err);
@@ -149,11 +187,19 @@ async function handleCredential(response) {
 window.handleCredential = handleCredential;
 
 async function exchangeGoogleToken(idToken) {
-    const res = await fetch(AUTH_API, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ idToken })
-    });
+    let res;
+    try {
+        res = await fetch(AUTH_API, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ idToken })
+        });
+    } catch {
+        throw new Error(
+            `Cannot reach auth API at ${AUTH_API || window.location.origin + '/auth/google'}. ` +
+            'Ensure Docker is running (docker compose up -d).'
+        );
+    }
 
     if (!res.ok) {
         const errText = await res.text();
@@ -198,6 +244,7 @@ function switchTab(tab) {
         tabTemp.classList.remove('active');
         tabTemp.classList.remove('temp-active');
         tabTemp.setAttribute('aria-selected', 'false');
+        loadCurrencyRateAndStats();
         loadCurrencyHistory();
     } else {
         currencySection.classList.add('hidden');
@@ -206,25 +253,94 @@ function switchTab(tab) {
         tabCurrency.classList.remove('active');
         tabTemp.setAttribute('aria-selected', 'true');
         tabCurrency.setAttribute('aria-selected', 'false');
+        loadTemperatureStats();
+        loadTemperatureUnits();
         loadTempHistory();
     }
 }
 
 // ==========================================
-//  CURRENCY CONVERTER
+//  CURRENCY
 // ==========================================
+function setCurrencyDirection(direction) {
+    currencyDirection = direction;
+    const usdBtn = document.getElementById('currency-dir-usd-lkr');
+    const lkrBtn = document.getElementById('currency-dir-lkr-usd');
+    const label = document.getElementById('currency-input-label');
+    const prefix = document.getElementById('currency-input-prefix');
+    const input = document.getElementById('currency-input');
+
+    if (usdBtn) usdBtn.classList.toggle('active', direction === 'usd-lkr');
+    if (lkrBtn) lkrBtn.classList.toggle('active', direction === 'lkr-usd');
+
+    if (direction === 'lkr-usd') {
+        if (label) label.textContent = 'Enter LKR Amount';
+        if (prefix) prefix.textContent = 'Rs';
+        if (input) input.placeholder = '30000.00';
+    } else {
+        if (label) label.textContent = 'Enter USD Amount';
+        if (prefix) prefix.textContent = '$';
+        if (input) input.placeholder = '100.00';
+    }
+}
+
+function resetCurrencyHistoryPage() {
+    currencyHistoryState.page = 0;
+}
+
+function changeCurrencyPage(delta) {
+    currencyHistoryState.page = Math.max(0, currencyHistoryState.page + delta);
+    loadCurrencyHistory();
+}
+
+async function loadCurrencyRateAndStats() {
+    if (!getAppToken()) return;
+
+    try {
+        const [rateRes, statsRes] = await Promise.all([
+            authFetch(`${CURRENCY_API}/rate`),
+            authFetch(`${CURRENCY_API}/stats`)
+        ]);
+
+        if (rateRes.ok) {
+            const rate = await rateRes.json();
+            const el = document.getElementById('currency-live-rate');
+            if (el) el.textContent = `1 ${rate.fromCurrency} = ${rate.rate} ${rate.toCurrency}`;
+        }
+
+        if (statsRes.ok) {
+            const stats = await statsRes.json();
+            const countEl = document.getElementById('currency-stat-count');
+            const usdEl = document.getElementById('currency-stat-usd');
+            const lkrEl = document.getElementById('currency-stat-lkr');
+            if (countEl) countEl.textContent = stats.totalConversions ?? '—';
+            if (usdEl) usdEl.textContent = `$ ${formatNumber(stats.totalUsdConverted)}`;
+            if (lkrEl) lkrEl.textContent = `Rs ${formatNumber(stats.totalLkrOutput)}`;
+        }
+    } catch (err) {
+        if (err.message !== 'Unauthorized') {
+            console.warn('Currency stats error:', err);
+        }
+    }
+}
+
 async function convertCurrency() {
     const input = document.getElementById('currency-input');
     const amount = parseFloat(input.value);
     const btn = document.getElementById('btn-convert-currency');
 
     if (!amount || amount <= 0) {
-        showToast('Please enter a valid USD amount', 'error');
+        showToast('Please enter a valid amount', 'error');
         input.focus();
         return;
     }
 
     if (!requireAuthOrToast()) return;
+
+    const isReverse = currencyDirection === 'lkr-usd';
+    const url = isReverse
+        ? `${CURRENCY_API}/convert/reverse?lkrAmount=${amount}`
+        : `${CURRENCY_API}/convert?usdAmount=${amount}`;
 
     btn.classList.add('loading');
     btn.innerHTML = `
@@ -233,9 +349,7 @@ async function convertCurrency() {
     `;
 
     try {
-        const res = await authFetch(`${CURRENCY_API}/convert?usdAmount=${amount}`, {
-            method: 'POST'
-        });
+        const res = await authFetch(url, { method: 'POST' });
 
         if (!res.ok) {
             const errText = await res.text();
@@ -243,18 +357,25 @@ async function convertCurrency() {
         }
 
         const data = await res.json();
-
         const resultPanel = document.getElementById('currency-result');
         resultPanel.classList.remove('hidden');
 
-        document.getElementById('currency-input-val').textContent = `$ ${formatNumber(data.inputAmount)}`;
-        document.getElementById('currency-output-val').textContent = `Rs ${formatNumber(data.outputAmount)}`;
-        document.getElementById('currency-rate-info').textContent = `Rate: 1 USD = ${data.exchangeRate} LKR`;
+        const inputCurrency = data.inputCurrency || (isReverse ? 'LKR' : 'USD');
+        const outputCurrency = data.outputCurrency || (isReverse ? 'USD' : 'LKR');
+        const inputPrefix = inputCurrency === 'USD' ? '$' : 'Rs';
+        const outputPrefix = outputCurrency === 'USD' ? '$' : 'Rs';
+
+        document.getElementById('currency-input-val').textContent =
+            `${inputPrefix} ${formatNumber(data.inputAmount)}`;
+        document.getElementById('currency-output-val').textContent =
+            `${outputPrefix} ${formatNumber(data.outputAmount)}`;
+        document.getElementById('currency-rate-info').textContent =
+            `Rate: 1 USD = ${data.exchangeRate} LKR`;
         document.getElementById('currency-time-info').textContent = formatTimestamp(data.timestamp);
 
         showToast('Conversion successful! ✨', 'success');
+        loadCurrencyRateAndStats();
         loadCurrencyHistory();
-
     } catch (err) {
         if (err.message !== 'Unauthorized') {
             console.error('Currency conversion error:', err);
@@ -269,40 +390,182 @@ async function convertCurrency() {
     }
 }
 
-async function loadCurrencyHistory() {
+function buildCurrencyHistoryUrl() {
+    const { scope, page } = currencyHistoryState;
+    if (scope === 'mine') {
+        return `${CURRENCY_API}/history/mine?page=${page}&size=${HISTORY_PAGE_SIZE}`;
+    }
+    return `${CURRENCY_API}/history?page=${page}&size=${HISTORY_PAGE_SIZE}`;
+}
+
+function updateHistoryPagination(prefix, state, meta, hasUnitFilter) {
+    const pagination = document.getElementById(`${prefix}-pagination`);
+    const pageInfo = document.getElementById(`${prefix}-page-info`);
+    const prevBtn = document.getElementById(`${prefix}-prev`);
+    const nextBtn = document.getElementById(`${prefix}-next`);
+
+    if (hasUnitFilter || !meta) {
+        if (pagination) pagination.hidden = true;
+        return;
+    }
+
+    if (pagination) pagination.hidden = false;
+    const totalPages = Math.max(meta.totalPages || 1, 1);
+    const currentPage = (meta.page ?? state.page) + 1;
+
+    if (pageInfo) pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+    if (prevBtn) prevBtn.disabled = state.page <= 0;
+    if (nextBtn) nextBtn.disabled = currentPage >= totalPages;
+}
+
+function renderCurrencyHistoryRows(rows, meta) {
     const tbody = document.getElementById('currency-history-body');
 
+    if (!rows.length) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No conversion history yet</td></tr>';
+        return;
+    }
+
+    const startIndex = meta ? meta.page * meta.size : 0;
+    tbody.innerHTML = rows.map((item, i) => {
+        const inputCur = item.inputCurrency || 'USD';
+        const outputCur = item.outputCurrency || 'LKR';
+        const inPrefix = inputCur === 'USD' ? '$' : 'Rs';
+        const outPrefix = outputCur === 'USD' ? '$' : 'Rs';
+        return `
+        <tr style="animation: fadeInUp 0.3s ease-out ${i * 0.05}s both">
+            <td style="color: var(--text-muted)">${startIndex + i + 1}</td>
+            <td><strong>${inPrefix} ${formatNumber(item.inputAmount)}</strong></td>
+            <td style="color: var(--accent-indigo); font-weight: 600">${outPrefix} ${formatNumber(item.outputAmount)}</td>
+            <td>${item.exchangeRate}</td>
+            <td style="color: var(--text-secondary); font-size: 0.75rem">${formatTimestamp(item.timestamp)}</td>
+            <td>
+                <button type="button" class="delete-btn" data-delete-currency="${item.id}" title="Delete record">×</button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+async function deleteCurrencyHistory(id) {
+    if (!requireAuthOrToast() || !id) return;
+    if (!confirm('Delete this conversion record?')) return;
+
     try {
-        const res = await authFetch(`${CURRENCY_API}/history`);
+        const res = await authFetch(`${CURRENCY_API}/history/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        showToast('Record deleted', 'success');
+        loadCurrencyRateAndStats();
+        loadCurrencyHistory();
+    } catch (err) {
+        if (err.message !== 'Unauthorized') {
+            showToast(`Delete failed: ${err.message}`, 'error');
+        }
+    }
+}
+
+async function loadCurrencyHistory() {
+    const tbody = document.getElementById('currency-history-body');
+    if (!getAppToken()) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="6">Sign in to view history</td></tr>';
+        return;
+    }
+
+    try {
+        const scope = currencyHistoryState.scope;
+        const countRes = await authFetch(`${CURRENCY_API}/history/count?mine=${scope === 'mine'}`);
+        if (countRes.ok) {
+            const count = await countRes.json();
+            const countEl = document.getElementById('currency-history-count');
+            if (countEl) countEl.textContent = `${count} record${count === 1 ? '' : 's'}`;
+        }
+
+        const res = await authFetch(buildCurrencyHistoryUrl());
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
 
-        if (!data.length) {
-            tbody.innerHTML = '<tr class="empty-row"><td colspan="5">No conversion history yet</td></tr>';
-            return;
-        }
+        const rows = Array.isArray(data) ? data : (data.content || []);
+        const meta = Array.isArray(data) ? null : data;
 
-        const sorted = [...data].reverse();
-        tbody.innerHTML = sorted.map((item, i) => `
-            <tr style="animation: fadeInUp 0.3s ease-out ${i * 0.05}s both">
-                <td style="color: var(--text-muted)">${sorted.length - i}</td>
-                <td><strong>$ ${formatNumber(item.inputAmount)}</strong></td>
-                <td style="color: var(--accent-indigo); font-weight: 600">Rs ${formatNumber(item.outputAmount)}</td>
-                <td>${item.exchangeRate}</td>
-                <td style="color: var(--text-secondary); font-size: 0.75rem">${formatTimestamp(item.timestamp)}</td>
-            </tr>
-        `).join('');
-
+        renderCurrencyHistoryRows(rows, meta);
+        updateHistoryPagination('currency', currencyHistoryState, meta, false);
     } catch (err) {
         if (err.message === 'Unauthorized') return;
         console.error('Load currency history error:', err);
-        tbody.innerHTML = '<tr class="empty-row"><td colspan="5" class="history-error">Could not load history. Sign in and check your connection.</td></tr>';
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="6" class="history-error">Could not load history. Sign in and check your connection.</td></tr>';
     }
 }
 
 // ==========================================
-//  TEMPERATURE CONVERTER
+//  TEMPERATURE
 // ==========================================
+function resetTempHistoryPage() {
+    tempHistoryState.page = 0;
+}
+
+function changeTempPage(delta) {
+    tempHistoryState.page = Math.max(0, tempHistoryState.page + delta);
+    loadTempHistory();
+}
+
+async function loadTemperatureUnits() {
+    if (!getAppToken()) return;
+
+    try {
+        const res = await authFetch(`${TEMP_API}/units`);
+        if (!res.ok) return;
+        const units = await res.json();
+        const select = document.getElementById('temp-unit');
+        const filterSelect = document.getElementById('temp-history-filter');
+        if (!select || !units.length) return;
+
+        const unitToValue = (name) => name.toLowerCase();
+        const unitSymbols = { Celsius: '°C', Fahrenheit: '°F', Kelvin: 'K' };
+
+        select.innerHTML = units.map((u) =>
+            `<option value="${unitToValue(u)}">${unitSymbols[u] || ''} ${u}</option>`
+        ).join('');
+
+        if (filterSelect) {
+            const current = filterSelect.value;
+            filterSelect.innerHTML =
+                '<option value="all">All</option>' +
+                units.map((u) => `<option value="${u}">${u}</option>`).join('');
+            if ([...filterSelect.options].some((o) => o.value === current)) {
+                filterSelect.value = current;
+            }
+        }
+    } catch (err) {
+        if (err.message !== 'Unauthorized') {
+            console.warn('Could not load temperature units:', err);
+        }
+    }
+}
+
+async function loadTemperatureStats() {
+    if (!getAppToken()) return;
+
+    try {
+        const res = await authFetch(`${TEMP_API}/stats`);
+        if (!res.ok) return;
+        const stats = await res.json();
+        const byUnit = stats.byUnit || {};
+
+        const countEl = document.getElementById('temp-stat-count');
+        const cEl = document.getElementById('temp-stat-celsius');
+        const fEl = document.getElementById('temp-stat-fahrenheit');
+        const kEl = document.getElementById('temp-stat-kelvin');
+
+        if (countEl) countEl.textContent = stats.totalConversions ?? '—';
+        if (cEl) cEl.textContent = byUnit.Celsius ?? 0;
+        if (fEl) fEl.textContent = byUnit.Fahrenheit ?? 0;
+        if (kEl) kEl.textContent = byUnit.Kelvin ?? 0;
+    } catch (err) {
+        if (err.message !== 'Unauthorized') {
+            console.warn('Temperature stats error:', err);
+        }
+    }
+}
+
 async function convertTemperature() {
     const input = document.getElementById('temp-input');
     const value = parseFloat(input.value);
@@ -334,7 +597,6 @@ async function convertTemperature() {
         }
 
         const data = await res.json();
-
         const resultPanel = document.getElementById('temp-result');
         resultPanel.classList.remove('hidden');
 
@@ -348,9 +610,9 @@ async function convertTemperature() {
         document.getElementById('temp-time-info').textContent = formatTimestamp(data.timestamp);
 
         showToast('Conversion successful! 🔥', 'success');
+        loadTemperatureStats();
         loadTempHistory();
         fetchAndShowSafetyWarning(value, unit);
-
     } catch (err) {
         if (err.message !== 'Unauthorized') {
             console.error('Temperature conversion error:', err);
@@ -373,7 +635,7 @@ async function fetchAndShowSafetyWarning(value, unit) {
         if (!res.ok) {
             const errText = await res.text().catch(() => '');
             showSafetyAlert(
-                errText || 'Safety check unavailable. Ensure the temperature API is running on port 8081.',
+                errText || 'Safety check unavailable.',
                 'warning'
             );
             return;
@@ -385,20 +647,14 @@ async function fetchAndShowSafetyWarning(value, unit) {
     } catch (err) {
         if (err.message === 'Unauthorized') return;
         console.warn('Safety check error:', err);
-        showSafetyAlert(
-            'Could not load safety warning. Check that the temperature API is reachable.',
-            'warning'
-        );
+        showSafetyAlert('Could not load safety warning.', 'warning');
     }
 }
 
 function showSafetyAlert(message, forceType) {
     const alert = document.getElementById('temp-safety-alert');
     const msg = document.getElementById('temp-safety-msg');
-    if (!alert || !msg) {
-        console.warn('Safety alert element missing — rebuild frontend container.');
-        return;
-    }
+    if (!alert || !msg) return;
 
     const isSafe = forceType === 'safe'
         || (!forceType && message.toLowerCase().includes('comfortable and safe'));
@@ -407,45 +663,94 @@ function showSafetyAlert(message, forceType) {
     alert.classList.remove('hidden');
 }
 
-function renderTempHistoryRows(data) {
+function buildTempHistoryUrl() {
+    const filterEl = document.getElementById('temp-history-filter');
+    const filter = filterEl ? filterEl.value : 'all';
+    const { scope, page } = tempHistoryState;
+
+    if (filter !== 'all') {
+        return `${TEMP_API}/history/filter?unit=${encodeURIComponent(filter)}`;
+    }
+    if (scope === 'mine') {
+        return `${TEMP_API}/history/mine?page=${page}&size=${HISTORY_PAGE_SIZE}`;
+    }
+    return `${TEMP_API}/history?page=${page}&size=${HISTORY_PAGE_SIZE}`;
+}
+
+function renderTempHistoryRows(rows, meta) {
     const tbody = document.getElementById('temp-history-body');
     const unitSymbols = { Celsius: '°C', Fahrenheit: '°F', Kelvin: 'K' };
 
-    if (!data.length) {
-        tbody.innerHTML = '<tr class="empty-row"><td colspan="5">No conversion history yet</td></tr>';
+    if (!rows.length) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No conversion history yet</td></tr>';
         return;
     }
 
-    const sorted = [...data].reverse();
-    tbody.innerHTML = sorted.map((item, i) => `
+    const startIndex = meta ? meta.page * meta.size : 0;
+    tbody.innerHTML = rows.map((item, i) => `
         <tr style="animation: fadeInUp 0.3s ease-out ${i * 0.05}s both">
-            <td style="color: var(--text-muted)">${sorted.length - i}</td>
+            <td style="color: var(--text-muted)">${startIndex + i + 1}</td>
             <td><strong>${formatNumber(item.inputTemperature)} ${unitSymbols[item.inputUnit] || ''}</strong></td>
             <td style="color: var(--accent-rose); font-weight: 600">${formatNumber(item.outputTemperature)} ${unitSymbols[item.outputUnit] || ''}</td>
             <td>${item.inputUnit} → ${item.outputUnit}</td>
             <td style="color: var(--text-secondary); font-size: 0.75rem">${formatTimestamp(item.timestamp)}</td>
+            <td>
+                <button type="button" class="delete-btn" data-delete-temp="${item.id}" title="Delete record">×</button>
+            </td>
         </tr>
     `).join('');
+}
+
+async function deleteTempHistory(id) {
+    if (!requireAuthOrToast() || !id) return;
+    if (!confirm('Delete this conversion record?')) return;
+
+    try {
+        const res = await authFetch(`${TEMP_API}/history/${id}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        showToast('Record deleted', 'success');
+        loadTemperatureStats();
+        loadTempHistory();
+    } catch (err) {
+        if (err.message !== 'Unauthorized') {
+            showToast(`Delete failed: ${err.message}`, 'error');
+        }
+    }
 }
 
 async function loadTempHistory() {
     const tbody = document.getElementById('temp-history-body');
     const filterEl = document.getElementById('temp-history-filter');
     const filter = filterEl ? filterEl.value : 'all';
-    const url = filter === 'all'
-        ? `${TEMP_API}/history`
-        : `${TEMP_API}/history/filter?unit=${encodeURIComponent(filter)}`;
+    const hasUnitFilter = filter !== 'all';
+
+    if (!getAppToken()) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="6">Sign in to view history</td></tr>';
+        return;
+    }
 
     try {
-        const res = await authFetch(url);
+        const scope = tempHistoryState.scope;
+        const countRes = await authFetch(`${TEMP_API}/history/count?mine=${scope === 'mine'}`);
+        if (countRes.ok) {
+            const count = await countRes.json();
+            const countEl = document.getElementById('temp-history-count');
+            if (countEl) countEl.textContent = `${count} record${count === 1 ? '' : 's'}`;
+        }
+
+        const res = await authFetch(buildTempHistoryUrl());
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        renderTempHistoryRows(data);
 
+        const rows = Array.isArray(data) ? data : (data.content || []);
+        const meta = Array.isArray(data) ? null : data;
+
+        renderTempHistoryRows(rows, meta);
+        updateHistoryPagination('temp', tempHistoryState, meta, hasUnitFilter);
     } catch (err) {
         if (err.message === 'Unauthorized') return;
         console.error('Load temp history error:', err);
-        tbody.innerHTML = '<tr class="empty-row"><td colspan="5" class="history-error">Could not load history. Sign in and check your connection.</td></tr>';
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="6" class="history-error">Could not load history. Sign in and check your connection.</td></tr>';
     }
 }
 
@@ -496,6 +801,18 @@ function showToast(message, type = 'success') {
     }, 3000);
 }
 
+function setupHistoryDeleteHandlers() {
+    document.getElementById('currency-history-body')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-delete-currency]');
+        if (btn) deleteCurrencyHistory(btn.dataset.deleteCurrency);
+    });
+
+    document.getElementById('temp-history-body')?.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-delete-temp]');
+        if (btn) deleteTempHistory(btn.dataset.deleteTemp);
+    });
+}
+
 // ==========================================
 //  KEYBOARD SHORTCUTS
 // ==========================================
@@ -534,7 +851,13 @@ document.head.appendChild(spinStyle);
 //  INIT
 // ==========================================
 document.addEventListener('DOMContentLoaded', () => {
+    setupHistoryDeleteHandlers();
     updateAuthBarUI();
+
+    if (getAppToken()) {
+        refreshCurrentUser();
+        loadCurrencyRateAndStats();
+    }
     loadCurrencyHistory();
 
     const params = new URLSearchParams(window.location.search);
@@ -546,3 +869,17 @@ document.addEventListener('DOMContentLoaded', () => {
         window.history.replaceState({}, '', newUrl);
     }
 });
+
+// Expose for inline handlers
+window.switchTab = switchTab;
+window.setCurrencyDirection = setCurrencyDirection;
+window.convertCurrency = convertCurrency;
+window.convertTemperature = convertTemperature;
+window.loadCurrencyHistory = loadCurrencyHistory;
+window.loadTempHistory = loadTempHistory;
+window.changeCurrencyPage = changeCurrencyPage;
+window.changeTempPage = changeTempPage;
+window.resetCurrencyHistoryPage = resetCurrencyHistoryPage;
+window.resetTempHistoryPage = resetTempHistoryPage;
+window.logout = logout;
+window.copyAppToken = copyAppToken;

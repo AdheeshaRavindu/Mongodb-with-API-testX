@@ -12,14 +12,16 @@ D:\Github\Projects\Mongodb-with-API-testX
 
 ## What's dockerized (full stack)
 
-When you run `docker compose up -d`, **9 containers** start:
+When you run `docker compose up -d`, **11 containers** start:
 
 ```text
 docker compose up -d
         │
         ├── converthub-frontend  (3000)  ← UI
-        ├── tempconv               (8081)  ← temp + auth
-        ├── currencyconvertor      (8082)  ← currency
+        ├── api-gateway            (8080)  ← API entry point
+        ├── tempconv               (internal 8081)  ← temp + auth
+        ├── currencyconvertor      (internal 8082)  ← currency
+        ├── redis                  (internal 6379)  ← rate limiting
         ├── mongo-temp             (27017) ← DB + users
         ├── mongo-currency         (27018) ← DB
         ├── rabbitmq               (56720, 15672)
@@ -64,8 +66,10 @@ net start MongoDB
 | Container | What it is | Port |
 |-----------|------------|------|
 | `converthub-frontend` | Web UI (nginx) | **3000** |
-| `tempconv` | Temperature API + auth (`POST /auth/google`) | **8081** |
-| `currencyconvertor` | Currency API | **8082** |
+| `api-gateway` | API Gateway (routing, JWT, rate limit) | **8080** |
+| `tempconv` | Temperature API + auth (internal) | internal **8081** |
+| `currencyconvertor` | Currency API (internal) | internal **8082** |
+| `redis` | Rate limiting backend | internal **6379** |
 
 ### Supporting services
 
@@ -95,10 +99,9 @@ net start MongoDB
 | Priority | What you open | Port |
 |----------|---------------|------|
 | **1** | Web UI | **http://localhost:3000** |
-| 2 | Temperature API | http://localhost:8081 |
-| 3 | Currency API | http://localhost:8082 |
-| 4 | RabbitMQ dashboard | http://localhost:15672 (`guest` / `guest`) |
-| 5 | MongoDB (Compass) | `localhost:27017`, `localhost:27018` |
+| **2** | API Gateway (Postman / API calls) | **http://localhost:8080** |
+| 3 | RabbitMQ dashboard | http://localhost:15672 (`guest` / `guest`) |
+| 4 | MongoDB (Compass) | `localhost:27017`, `localhost:27018` |
 
 | Container | Role |
 |-----------|------|
@@ -337,8 +340,8 @@ netstat -ano | findstr :27017
 | Port | Service |
 |------|---------|
 | 3000 | Frontend |
-| 8081 | Temperature API |
-| 8082 | Currency API |
+| 8080 | API Gateway |
+| 3000 | Frontend |
 | 27017 | MongoDB (temp) |
 | 27018 | MongoDB (currency) |
 | 56720 | RabbitMQ AMQP (host; container still 5672) |

@@ -34,7 +34,7 @@ Spring Boot microservices + MongoDB for USD/LKR currency and temperature convers
 
 - RabbitMQ events after every successful temperature and currency conversion
 
-- Dockerized full stack (frontend + 2 APIs + 2 MongoDB instances + RabbitMQ)
+- Dockerized full stack (frontend + API gateway + 2 APIs + 2 MongoDB instances + RabbitMQ + Redis)
 
 
 
@@ -44,21 +44,16 @@ Spring Boot microservices + MongoDB for USD/LKR currency and temperature convers
 
 ```
 
-Frontend (3000) ── Google Sign-In ──► POST /auth/google (8081)
-
+Frontend (3000) ── Google Sign-In ──► API Gateway (8080)
                   │                      │
-
-                  │                      └── issues application JWT
-
-                  ├── Temperature API (8081) ── MongoDB temp_db (27017)
-
-                  │         │
-
-                  │         └──► RabbitMQ (5672) ── temperature.conversion.queue
-
-                  └── Currency API (8082)   ── MongoDB currency_db (27018)
-
-                            └──► RabbitMQ (5672) ── currency.conversion.queue
+                  │                      ├── POST /auth/google ──► tempconv
+                  │                      ├── /api/temperatures/** ──► tempconv
+                  │                      └── /api/currency/** ──► currencyconvertor
+                  │                      └── JWT validation + rate limiting (Redis)
+                  ├── tempconv ── MongoDB temp_db (27017)
+                  │         └──► RabbitMQ ── temperature.conversion.queue
+                  └── currencyconvertor ── MongoDB currency_db (27018)
+                            └──► RabbitMQ ── currency.conversion.queue
 
 ```
 
@@ -70,9 +65,13 @@ Frontend (3000) ── Google Sign-In ──► POST /auth/google (8081)
 
 | Frontend UI | 3000 | Open this in the browser |
 
-| Temperature API | 8081 | REST + `POST /auth/google` |
+| **API Gateway** | **8080** | **Single entry point for all API calls** |
 
-| Currency API | 8082 | REST only — validates same app JWT |
+| Temperature API | internal 8081 | Routed via gateway only |
+
+| Currency API | internal 8082 | Routed via gateway only |
+
+| Redis | internal 6379 | Gateway rate limiting |
 
 | MongoDB (temp) | 27017 | `temp_db` |
 
@@ -160,9 +159,10 @@ Mongodb-with-API-testX/
 
 ├── .env.example        # Copy to .env once (not in git)
 
-├── tempconv/           # Temperature microservice (8081)
+├── api-gateway/        # API Gateway (8080)
+├── tempconv/           # Temperature microservice (internal)
 
-├── currencyconvertor/  # Currency microservice (8082)
+├── currencyconvertor/  # Currency microservice (internal)
 
 ├── frontend/           # Web UI + get-token.html (sign-in page)
 
@@ -234,7 +234,7 @@ All `/api/**` routes require: `Authorization: Bearer <application_jwt>`
 
 
 
-### Currency (`8082`)
+### Currency (via gateway)
 
 
 
@@ -256,7 +256,7 @@ All `/api/**` routes require: `Authorization: Bearer <application_jwt>`
 
 # 1. Exchange Google ID token for application JWT (get idToken from /get-token.html sign-in)
 
-curl -X POST "http://localhost:8081/auth/google" \
+curl -X POST "http://localhost:8080/auth/google" \
 
   -H "Content-Type: application/json" \
 
@@ -270,13 +270,13 @@ TOKEN="YOUR_APPLICATION_JWT"
 
 
 
-curl -X POST "http://localhost:8081/api/temperatures/convert?value=25&unit=celsius" \
+curl -X POST "http://localhost:8080/api/temperatures/convert?value=25&unit=celsius" \
 
   -H "Authorization: Bearer $TOKEN"
 
 
 
-curl -X POST "http://localhost:8082/api/currency/convert?usdAmount=100" \
+curl -X POST "http://localhost:8080/api/currency/convert?usdAmount=100" \
 
   -H "Authorization: Bearer $TOKEN"
 

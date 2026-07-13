@@ -13,6 +13,7 @@ public class CurrencyLog {
     private String outputCurrency;
     private double exchangeRate;
     private String timestamp;
+    private String userId;
 
     public CurrencyLog() {
     }
@@ -81,5 +82,13 @@ public class CurrencyLog {
 
     public void setTimestamp(String timestamp) {
         this.timestamp = timestamp;
+    }
+
+    public String getUserId() {
+        return userId;
+    }
+
+    public void setUserId(String userId) {
+        this.userId = userId;
     }
 }

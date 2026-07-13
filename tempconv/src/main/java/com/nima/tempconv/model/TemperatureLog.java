@@ -22,4 +22,5 @@ public class TemperatureLog {
     private double outputTemperature;
     private String outputUnit;
     private String timestamp;
+    private String userId;
 }
